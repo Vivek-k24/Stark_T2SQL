@@ -250,3 +250,135 @@ When live PostgreSQL testing is conducted by the user/owner:
 **Verdict:** **APPROVE**
 
 The architectural design for Gate R03 is sound, compliant with FRD 1.8, and demonstrates exceptional defensive rigor. Codex is authorized to proceed with the minimal implementation changes outlined in Section 6.
+
+
+---
+
+## R03 — Independent Implementation Verification
+
+**Date:** 2026-10-14  
+**Implementation PR:** [Draft PR #14](https://github.com/Vivek-k24/Stark_T2SQL/pull/14)  
+**Shared Working Branch:** `codex/r03-remediation`  
+**Commits Reviewed:**
+- [`1bbd5950494f1dda592127c68bfafea5700652bc`](https://github.com/Vivek-k24/Stark_T2SQL/commit/1bbd5950494f1dda592127c68bfafea5700652bc) (`Fix R03 baseline login bootstrap and clone-only policy application`)
+- [`3215a6b13c7d7fc3c591fd6ad68bf989c7edf12a`](https://github.com/Vivek-k24/Stark_T2SQL/commit/3215a6b13c7d7fc3c591fd6ad68bf989c7edf12a) (`Record R03 implementation commit and draft PR handoff`)  
+**Work Log:** [`Codex_R03_Work_Log.md`](Codex_R03_Work_Log.md)  
+**Verification Verdict:** **APPROVE**
+
+---
+
+### 1. Verification of Design Findings & Remediation
+
+Antigravity independently audited Codex's code changes across all 8 modified repository files:
+
+#### A. Resolution of Finding R03-F1: Baseline Login Bootstrap & Resource Defaults
+- **Implementation Audited:** `src/stark_t2sql/policy/privileges.py`, `src/stark_t2sql/policy/compiler.py`, `src/stark_t2sql/policy/grants.py`, `src/stark_t2sql/policy/rls.py`.
+- **Findings:**
+  - `managed_role_names(matrix, definer_owner, baseline_eval_login)` now validates `baseline_eval_login` (disallowing collision with managed roles, `postgres`, `public`, system schemas, or role names whose policy name exceeds 63 bytes).
+  - `role_statements()` includes `baseline_eval_login` in the role safety check DO block, creates it with `LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`, strips stale memberships via `$stark_memberships$`, and grants NO business-role memberships to it.
+  - `login_default_statements()` sets all 5 persistent session defaults (`statement_timeout = 15000ms`, `default_transaction_read_only = on`, `row_security = on`, `work_mem = 64kB`, `temp_file_limit = 10000kB`, `search_path = "pg_catalog", "public", "pg_temp"`) on `baseline_eval_login` both globally and per-database.
+  - `grants.py`, `rls.py`, and `privileges.py` include `baseline_eval_login` in all cleanup revokes (schema CREATE/TEMP, table/sequence/column ACLs, helper-function EXECUTE, and `set_config` EXECUTE).
+  - Production compilation (`baseline_eval_login=None`) emits zero baseline roles, grants, or policies.
+  - **Verdict:** Fully satisfied.
+
+#### B. Resolution of Finding R03-F2: Self-Contained Offline Verification for Column Grants
+- **Implementation Audited:** `tests/test_policy_contracts.py#test_grant_output_matches_matrix_columns`.
+- **Findings:**
+  - The grant output test was parametrized for both production (`baseline=None`) and clone (`baseline="stark_eval_baseline_login"`) configurations using the frozen `seed_data.TABLE_COLUMNS` contract directly.
+  - It independently asserts the exact set and count of `GRANT SELECT` statements:
+    - `app_payroll`: All columns on 11 tables, no grant on `hr_bp_assignments`.
+    - `app_hr_bp`: Exact 13 columns on `employees` (no `employee_number`, no compensation), all columns on `leave_balances`, reference tables.
+    - `app_sales_mgr`: Exact 5 columns on `employees` (`employee_id, first_name, last_name, department_id, manager_id`), reference tables, and NO grant on `leave_balances`, `employee_compensation`, or `payroll_*`.
+    - `stark_scope_owner`: Exact 3 backing columns on `hr_bp_assignments` (`employee_id, division_id, effective_to`).
+    - `stark_eval_baseline_login`: Full SELECT on all 12 tables (only when enabled).
+  - The test runs 100% offline with zero skips.
+  - **Verdict:** Fully satisfied.
+
+#### C. Evaluation Clone Protection in Administrative Policy Application
+- **Implementation Audited:** `src/stark_t2sql/db/policy_apply.py#_require_evaluation_clone`.
+- **Findings:**
+  - When `plan.settings.baseline_eval_login` is present, `policy_apply()` requires `_require_evaluation_clone()`.
+  - It inspects `pg_catalog.shobj_description(oid, 'pg_database')` on the live connection, strictly validating `kind = "stark_disposable_evaluation_clone"`, valid `clone_token` regex `[A-Za-z0-9_-]{16,128}`, non-empty `source_database`, `source_database != clone_database`, matching `clone_oid`, matching `fixture_dump_sha256`, and an existing distinct `source_database_oid`.
+  - It verifies `current_role not in managed` and `login_role not in managed`, barring administrative setup by business logins, the scope owner, or the baseline login.
+  - Applying a baseline-enabled plan to an unmarked or production database fails closed before any DDL is executed.
+  - **Verdict:** Fully satisfied.
+
+#### D. Boundary Integrity & Identity Spoofing Assessment (FR-6.4, FR-6.8)
+- **Implementation Audited:** `src/stark_t2sql/db/executor.py`, `tests/test_execution_resources.py`, `tests/test_policy_contracts.py`.
+- **Findings:**
+  - `set_config` function execution is strictly revoked from `PUBLIC` and business roles (`app_payroll`, `app_hr_bp`, `app_sales_mgr`), preventing candidate queries from modifying `app.principal_id` via SQL function calls.
+  - The utility command `SET app.principal_id` remains an explicitly documented single-layer dependency (`test_identity_spoof_is_a_documented_single_layer_dependency`).
+  - In `NO_VALIDATOR` mode, `EvaluationExecutor` enforces `HarnessSafetyReviewer`, which rejects non-SELECT and multi-statement commands (`test_command_and_multistatement_entry_guard_without_inventing_parser_approval`, `test_no_validator_keeps_mandatory_harness_safety_review`).
+  - In `NO_VALIDATOR` mode, candidate execution maintains the persona business login, sets `app.principal_id` as the login role, calls `SET LOCAL ROLE <business_role>`, and runs with engine-level column grant and FORCE RLS filtering (`test_ablation_driver_routing_keeps_business_identity_except_uncontrolled`).
+  - Only `UNCONTROLLED` mode uses the dedicated baseline login without role switching or principal setting.
+  - **Verdict:** Fully satisfied.
+
+---
+
+### 2. Provenance & Frozen Asset Accounting
+
+All five frozen repository assets were re-hashed independently using SHA-256. Zero drift detected:
+
+| File | Authoritative Manifest Hash | Independently Measured Hash | Status |
+| :--- | :--- | :--- | :--- |
+| `schema.sql` | `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` | `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` | **MATCH** |
+| `seed_data.py` | `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` | `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` | **MATCH** |
+| `fixture_pg_dump.sql` | `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` | `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` | **MATCH** |
+| `fixture_manifest.json` | `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` | `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` | **MATCH** |
+| `src/inference/prompt_template.txt` | `67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6` | `67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6` | **MATCH** |
+
+---
+
+### 3. Independent Test Execution Results
+
+All tests were executed using the approved test environment (`Python 3.12.10`, `psycopg2-binary 2.9.13`, `Faker 40.43.0`, `pytest 8.3.5`) with `$env:STARK_TEST_ENABLE_DB_INTEGRATION='0'`.
+
+#### Run 1: Focused Policy, Execution Resources, and Database Integration Tests
+```powershell
+$env:STARK_TEST_ENABLE_DB_INTEGRATION = '0'
+$env:PYTHONPATH = 'src;.'
+& 'H:\STARK_T2SQL_R02_ENV\Scripts\python.exe' -m pytest tests/test_policy_contracts.py tests/test_database_integration.py tests/test_execution_resources.py tests/test_schema_contracts.py -v
+```
+**Result:** **163 passed, 7 skipped in 0.78s (0 failed, exit code 0)**.
+- Offline column grant contracts (production and clone): **PASSED**.
+- Baseline role creation, defaults, revokes, and safety DO blocks: **PASSED**.
+- Deterministic policy compilation and preflight checks: **PASSED**.
+- Missing table and missing column rejection: **PASSED**.
+- Mock role audit (rejection of each elevated role flag): **PASSED**.
+- Mock DDL audit (rejection of database ownership, schema CREATE, object ownership): **PASSED**.
+- Mock settings audit (verification of pg_settings and rolconfig): **PASSED**.
+- Mock connection audit (rejection of non-loopback hosts and port mismatches): **PASSED**.
+- Mock privilege audit (rejection of 10 distinct privilege defects): **PASSED**.
+- Mock policy fingerprint drift detection (predicates, function bodies, search paths): **PASSED**.
+- Mock clone marker validation in `policy_apply`: **PASSED**.
+- Command and multi-statement entry guards: **PASSED**.
+- `NO_VALIDATOR` harness safety stops and driver routing: **PASSED**.
+- Skips: 6 opt-in live PostgreSQL tests in `test_database_integration.py` and 1 external schema metadata test in `test_schema_contracts.py`.
+
+#### Run 2: Full Repository Regression Test Suite
+```powershell
+$env:STARK_TEST_ENABLE_DB_INTEGRATION = '0'
+$env:PYTHONPATH = 'src;.'
+& 'H:\STARK_T2SQL_R02_ENV\Scripts\python.exe' -m pytest -q -ra
+```
+**Result:** **463 passed, 177 skipped in 49.92s (0 failed, exit code 0)**.
+- Baseline passing tests increased from 326 (R02) to **463** (+137 tests).
+- Zero regressions across the entire codebase.
+
+---
+
+### 4. Remaining Limitations & Live Integration Requirements
+
+1. **Live PostgreSQL Verification Remains Pending:**
+   - No live PostgreSQL server daemon was started, and no live database connection was opened during offline verification.
+   - Live PostgreSQL enforcement (probes returning `42501`, live row count matching on `employees` and `leave_balances`, live clone creation, and real `policy_apply` execution against a running PostgreSQL 16 instance) remains an outstanding live integration requirement for Gate R09.
+2. **Synthetic Resource Budgets in Unit Mocks:**
+   - The 64 KiB `work_mem` and 10,000 KiB `temp_file_limit` values used in unit mocks are test inputs, not measured production deployment configurations. Live resource tuning remains part of E1/E2 measurement.
+
+---
+
+### 5. Final Gate R03 Recommendation
+
+1. **Implementation Verification:** Codex's implementation in [Draft PR #14](https://github.com/Vivek-k24/Stark_T2SQL/pull/14) completely and accurately addresses all requirements of FRD 1.8 (Section 6, FR-6.1–FR-6.11), GitHub Issue #5, and Antigravity Design Review findings R03-F1 and R03-F2.
+2. **Final Gate R03 Verdict:** **APPROVE**.
+3. **Sequential Promotion:** [Draft PR #14](https://github.com/Vivek-k24/Stark_T2SQL/pull/14) is recommended for **MERGE** into `gemini/full-remediation-review` by the human approver. Gate R04 may begin only after PR #14 is merged.
