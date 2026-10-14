@@ -1,40 +1,34 @@
-"""Future fixture-authoring source for STARK-TTSQL-FRD-1.8, DR-1--DR-4.
+"""R02 deterministic synthetic fixture and explicitly authorized local reset.
 
-This module performs no work on import and has no automatic CLI entry point.
-Generating/loading rows is a separate future task. It never exports a dump,
-manifest, canary file, or numeric benchmark answer. The committed dump remains
-the authoritative evaluation fixture.
+Importing performs no generation, file writes, network or database work. Normal
+generation uses a new review-authorized R02 baseline, not a reconstruction of
+the unavailable historical dataset. The legacy externally bound configuration
+loader remains available. The 18 operational checks are authored definitions,
+not recovered historical checks. CLI defaults to an in-memory dry run.
 
-The historical generator, its eighteen original checks, its DDL, and its
-reference/identity values were unavailable when this source was drafted. An
-owner-supplied configuration and a real historical-schema fidelity binding are
-mandatory. The eighteen functions below are drafted operational invariants,
-not an assertion that the unavailable historical check list was recovered.
-Employee/reference identities are exclusively external inputs. Seed 42 governs
-future compensation, earning, deduction and leave amounts; it does not invent
-authoritative employees, departments, divisions or planted-case selectors.
-
-Expected external JSON sections: schema_fidelity, divisions, departments,
-locations, positions, employees, compensation_plans, payroll_plans,
-hr_assignments, leave_employee_ids, leave_types, leave_snapshot_dates,
-small_compensated_department_ids, zero_tax_employee_ids,
-zero_tax_population_definition, header_mismatch, sales_division_id,
-second_hr_principal_id, amount_generation, earning_vocabulary,
-deduction_vocabulary, and leave_amount_bounds. No example configuration is
-provided because its actual identities and historical layout are missing.
+Reset additionally requires an owner-supplied isolation proof and matching
+live database COMMENT/OID/endpoint/schema binding. This module never creates
+that authorization marker. It refuses unrelated objects and never truncates
+with CASCADE. No live PostgreSQL acceptance is implied by offline exports.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field, fields, is_dataclass, replace
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import json
 from pathlib import Path
 import random
 import re
+import argparse
+import importlib.metadata
+import ipaddress
+import os
+import sys
+import tempfile
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Sequence
 
@@ -48,7 +42,7 @@ DEPARTMENT_COUNT = 37
 ACTIVE_EMPLOYEE_COUNT = 435
 CENT = Decimal("0.01")
 
-# Draft physical contract; reconciliation with historical DDL is mandatory.
+# Frozen project physical contract; historical fidelity remains unverified.
 TABLE_COLUMNS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     "divisions": ("division_id", "division_code", "division_name"),
     "locations": ("location_id", "location_code", "location_name"),
@@ -187,7 +181,7 @@ class DeductionVocabulary:
 
 @dataclass(frozen=True, slots=True)
 class SeedConfiguration:
-    fidelity: SchemaFidelityBinding
+    fidelity: SchemaFidelityBinding | None
     configuration_sha256: str
     divisions: tuple[Mapping[str, Any], ...]
     departments: tuple[Mapping[str, Any], ...]
@@ -218,7 +212,7 @@ class SeedConfiguration:
 class GeneratedFixture:
     rows: Mapping[str, tuple[Mapping[str, Any], ...]]
     configuration_sha256: str
-    fidelity: SchemaFidelityBinding
+    fidelity: SchemaFidelityBinding | None
 
     def table(self, name: str) -> tuple[Mapping[str, Any], ...]:
         return self.rows.get(name, ())
@@ -236,10 +230,11 @@ class InvariantResult:
 class FixtureCreationSummary:
     fixture_version: str
     configuration_sha256: str
-    historical_schema_sha256: str
+    historical_schema_sha256: str | None
     project_schema_sha256: str
     row_counts: Mapping[str, int]
     operational_invariants: tuple[InvariantResult, ...]
+    database_verified: bool = False
 
 
 def _object(value: Any, label: str) -> Mapping[str, Any]:
@@ -510,7 +505,7 @@ def is_active(employee: Mapping[str, Any], as_of_date: date = FIXTURE_DATE) -> b
 
 def require_seed_contract(config: SeedConfiguration) -> None:
     """Reject missing/provisional layout before future amount generation."""
-    if type(config) is not SeedConfiguration or config.fidelity._seal is not _FIDELITY_SEAL:
+    if type(config) is not SeedConfiguration or (config.fidelity is not None and config.fidelity._seal is not _FIDELITY_SEAL):
         raise MissingSeedInputError("A source-loaded owner configuration and historical schema fidelity binding are required.")
     if len(config.divisions) != DIVISION_COUNT or len(config.departments) != DEPARTMENT_COUNT or len(config.employees) != EMPLOYEE_COUNT:
         raise MissingSeedInputError("Owner layout must supply exactly 10 divisions, 37 departments and 500 employees.")
@@ -645,12 +640,18 @@ def _compensation_on(rows: Sequence[Mapping[str, Any]], employee_id: int, day: d
     return matches[0]
 
 
-def generate_fixture(config: SeedConfiguration) -> GeneratedFixture:
-    """Future deterministic in-memory generation; never writes files or rows."""
+def generate_fixture(config: SeedConfiguration | None = None, *, seed: int = FIXTURE_SEED,
+                     as_of_date: date = FIXTURE_DATE) -> GeneratedFixture:
+    """Generate the reviewed R02 baseline in memory, without a database."""
+    if type(seed) is not int or seed != FIXTURE_SEED or type(as_of_date) is not date or as_of_date != FIXTURE_DATE:
+        raise MissingSeedInputError("R02 requires seed 42 and as-of date 2026-10-12.")
+    if config is None:
+        config = default_seed_configuration()
     require_seed_contract(config)
     # Re-read actual schema inputs later to reject stale source/config bindings.
-    _actual_digest(config.fidelity.project_schema_path, config.fidelity.project_schema_sha256, "Project schema")
-    _actual_digest(config.fidelity.historical_schema_path, config.fidelity.historical_schema_sha256, "Historical schema")
+    if config.fidelity is not None:
+        _actual_digest(config.fidelity.project_schema_path, config.fidelity.project_schema_sha256, "Project schema")
+        _actual_digest(config.fidelity.historical_schema_path, config.fidelity.historical_schema_sha256, "Historical schema")
     rng = random.Random(FIXTURE_SEED)
     data: dict[str, list[Mapping[str, Any]]] = {table: [] for table in TABLE_COLUMNS}
     for table in ("divisions", "departments", "locations", "positions", "employees"):
@@ -758,7 +759,7 @@ def check_02_reference_cardinality(fixture: GeneratedFixture, config: SeedConfig
         valid = valid and len({row[pk] for row in rows}) == len(rows)
         code = table[:-1] + "_code" if table != "departments" else "department_code"
         valid = valid and len({row[code] for row in rows}) == len(rows)
-    return _result(2, "Owner-supplied lookup identities and 10/37 cardinalities", valid)
+    return _result(2, "Reviewed lookup identities and 10/37 cardinalities", valid)
 
 
 def check_03_employee_identity(fixture: GeneratedFixture, config: SeedConfiguration) -> InvariantResult:
@@ -767,7 +768,7 @@ def check_03_employee_identity(fixture: GeneratedFixture, config: SeedConfigurat
     for key in ("employee_id", "employee_number", "email"):
         valid = valid and len({row[key] for row in rows}) == len(rows)
     valid = valid and all(type(row["employee_id"]) is int and row["employee_id"] > 0 and re.fullmatch(r"S[0-9]{5}", row["employee_number"]) is not None for row in rows)
-    return _result(3, "500 distinct externally supplied employee identities", valid)
+    return _result(3, "500 distinct synthetic employee identities", valid)
 
 
 def check_04_relationship_keys(fixture: GeneratedFixture, config: SeedConfiguration) -> InvariantResult:
@@ -891,7 +892,7 @@ def check_13_negative_net_fact(fixture: GeneratedFixture, config: SeedConfigurat
     selected = {row["employee_id"] for row in fixture.table("payroll_results") if row["payroll_run_id"] == runs.get("PR-2026-006") and row["net_pay"] < 0}
     plans = {plan.run_number: plan for plan in config.payroll_plans}
     expected = set(plans["PR-2026-006"].negative_net_employee_ids) if "PR-2026-006" in plans else set()
-    return _result(13, "Exactly three owner-selected negative nets in PR-2026-006", len(selected) == 3 and selected == expected)
+    return _result(13, "Exactly three configured negative nets in PR-2026-006", len(selected) == 3 and selected == expected)
 
 
 def check_14_zero_annual_tax_fact(fixture: GeneratedFixture, config: SeedConfiguration) -> InvariantResult:
@@ -902,7 +903,7 @@ def check_14_zero_annual_tax_fact(fixture: GeneratedFixture, config: SeedConfigu
             taxes[row["employee_id"]] += row["tax_amount"]
     selected = {employee_id for employee_id, total in taxes.items() if total == 0}
     valid = config.zero_tax_population_definition == "employees_with_2026_payroll_rows" and len(selected) == 4 and selected == set(config.zero_tax_employee_ids)
-    return _result(14, "Exactly four owner-selected zero-tax 2026 payees under explicit population definition", valid)
+    return _result(14, "Exactly four configured zero-tax 2026 payees under explicit population definition", valid)
 
 
 def check_15_header_mismatch_fact(fixture: GeneratedFixture, config: SeedConfiguration) -> InvariantResult:
@@ -917,7 +918,7 @@ def check_15_header_mismatch_fact(fixture: GeneratedFixture, config: SeedConfigu
             if difference != 0:
                 mismatches.append((run["run_number"], header, difference))
     expected = [("PR-2026-012", config.mismatch_column, Decimal("125.00") * config.mismatch_sign)]
-    return _result(15, "Only PR-2026-012 has the owner-selected 125.00 header/detail difference", mismatches == expected)
+    return _result(15, "Only PR-2026-012 has the configured 125.00 header/detail difference", mismatches == expected)
 
 
 def check_16_off_cycle_corrections_fact(fixture: GeneratedFixture, config: SeedConfiguration) -> InvariantResult:
@@ -941,7 +942,7 @@ def check_17_small_compensated_departments(fixture: GeneratedFixture, config: Se
     for employee_id in current & set(active):
         counts[active[employee_id]["department_id"]] += 1
     small = {department_id for department_id, count in counts.items() if count < 5}
-    return _result(17, "Exactly seven owner-selected departments below five active/current compensated employees", len(small) == 7 and small == set(config.small_compensated_department_ids))
+    return _result(17, "Exactly seven configured departments below five active/current compensated employees", len(small) == 7 and small == set(config.small_compensated_department_ids))
 
 
 def check_18_leave_and_hr_scopes(fixture: GeneratedFixture, config: SeedConfiguration) -> InvariantResult:
@@ -993,8 +994,10 @@ OPERATIONAL_INVARIANTS: tuple[Callable[[GeneratedFixture, SeedConfiguration], In
 )
 
 
-def evaluate_invariants(fixture: GeneratedFixture, config: SeedConfiguration) -> tuple[InvariantResult, ...]:
+def evaluate_invariants(fixture: GeneratedFixture, config: SeedConfiguration | None = None) -> tuple[InvariantResult, ...]:
     """Future pure row evaluation; never claims empirical security/accuracy."""
+    if config is None:
+        config = default_seed_configuration()
     results: list[InvariantResult] = []
     for index, invariant in enumerate(OPERATIONAL_INVARIANTS, start=1):
         try:
@@ -1028,65 +1031,549 @@ def _require_database_shape(cursor: Any) -> None:
         raise MissingSeedInputError("The actual target database does not match the owner-bound twelve-table physical contract.")
 
 
-def create_fixture(
-    configuration_path: Path,
-    *,
-    project_root: Path,
-    admin_source: Any,
-) -> FixtureCreationSummary:
-    """Future explicitly invoked loader into an EMPTY owner database only.
+def _json_value(value: Any) -> Any:
+    if isinstance(value, (date, Decimal, Path)):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {key: _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    if is_dataclass(value):
+        return {field.name: _json_value(getattr(value, field.name)) for field in fields(value)}
+    return value
 
-    No reset, schema creation, policy installation, clone creation, export,
-    dump/manifest write, or candidate-SQL execution is supplied here. Exact
-    administrative-source capability and fresh actual source bindings are
-    required. The caller separately authorizes any future invocation.
+
+def _json_bytes(value: Any) -> bytes:
+    return (json.dumps(_json_value(value), sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False) + "\n").encode("utf-8")
+
+
+def default_seed_configuration() -> SeedConfiguration:
+    """New R02 layout; names/selectors are not claimed as historical identities.
+
+    A private Faker instance has seed 42 rather than altering Faker's global
+    random state. Reproduction requires the Faker version recorded in manifest.
+    """
+    from faker import Faker
+
+    fake = Faker(locale="en_US")
+    fake.seed_instance(FIXTURE_SEED)
+    rng = random.Random(FIXTURE_SEED)
+    names = ("Sales", "Engineering", "Finance", "Human Resources", "Operations",
+             "Marketing", "Legal", "Customer Success", "Research", "Strategy")
+    divisions = tuple({"division_id": i, "division_code": f"DIV{i:02d}", "division_name": name}
+                      for i, name in enumerate(names, 1))
+    departments = tuple({"department_id": i, "division_id": (i - 1) % 10 + 1,
+                         "department_code": f"DEP{i:02d}", "department_name": f"{names[(i - 1) % 10]} Team {i:02d}"}
+                        for i in range(1, 38))
+    locations = tuple({"location_id": i, "location_code": f"LOC{i:02d}", "location_name": fake.city()}
+                      for i in range(1, 8))
+    positions = tuple({"position_id": i, "position_code": f"POS{i:02d}", "position_name": fake.unique.job()}
+                      for i in range(1, 21))
+    employees = []
+    for i in range(1, 501):
+        hired = date(2019, 1, 1) + timedelta(days=rng.randrange(1500))
+        terminated, status = None, "active"
+        if 436 <= i <= 475:
+            terminated, status = date(2026, 7, 1), "terminated"
+        elif 476 <= i <= 490:
+            hired, status = date(2026, 11, 1), "pending_hire"
+        elif i >= 491:
+            hired, terminated, status = date(2026, 11, 1), date(2026, 10, 1), "cancelled_pre_hire"
+        employees.append({
+            "employee_id": i, "employee_number": f"S{i:05d}",
+            "first_name": fake.first_name(), "last_name": fake.last_name(),
+            "email": f"employee{i:05d}@starkcorp.example.com",
+            "department_id": (i - 1) // 3 + 1 if i <= 21 else 8 + (i - 22) % 30,
+            "position_id": rng.randrange(1, 21), "location_id": rng.randrange(1, 8),
+            "manager_id": None if i == 1 else (i - 2) // 10 + 1,
+            "hire_date": hired, "termination_date": terminated, "status": status,
+            "employment_type": "part_time" if i % 5 == 0 else "full_time",
+            "legal_entity": "Stark Synthetic LLC",
+        })
+    compensation = tuple(CompensationPlan(e["employee_id"], e["hire_date"], date(2025, 1, 1), e["termination_date"])
+                         for e in employees if e["employee_id"] <= 475)
+    payroll = []
+    for i in range(1, 21):
+        start = date(2026, 1, 2) + timedelta(days=14 * (i - 1))
+        end, payday = start + timedelta(days=13), start + timedelta(days=15)
+        payees = tuple(e["employee_id"] for e in employees if e["hire_date"] <= end
+                       and e["status"] != "cancelled_pre_hire"
+                       and (e["termination_date"] is None or end < e["termination_date"]))
+        payroll.append(PayrollPlan(i, f"PR-2026-{i:03d}", start, end, payday, False,
+                                  "posted" if i == 20 else "closed", 1, payday,
+                                  payees, (5, 6, 7) if i == 6 else (), ()))
+    payroll.append(PayrollPlan(24, "PR-2026-024", date(2026, 10, 10), FIXTURE_DATE, FIXTURE_DATE,
+                              True, "approved", 1, FIXTURE_DATE, (1, 2, 3, 4), (),
+                              tuple(CorrectionSelector(i, -1 if i == 3 else 1) for i in range(1, 5))))
+    assignments = tuple({"employee_id": principal, "division_id": division,
+                         "effective_from": date(2025, 1, 1), "effective_to": None}
+                        for principal, scope in ((47, (1, 2)), (361, (3, 4)), (364, (5, 6)))
+                        for division in scope)
+    config = SeedConfiguration(
+        None, "", divisions, departments, locations, positions, tuple(employees), compensation,
+        tuple(payroll), assignments, tuple(range(1, 436)), ("annual", "personal", "sick"),
+        (date(2026, 9, 30), FIXTURE_DATE), tuple(range(1, 8)), (10, 20, 30, 40),
+        "employees_with_2026_payroll_rows", "total_gross_pay", 1, 1, 361,
+        AmountGeneration(*(Decimal(value) for value in (
+            "42000", "210000", "0", "25", "0", "350", "12", "28", "2", "8",
+            "50", "250", "25", "450")), annual_pay_cycles=26),
+        LineVocabulary("BASE", "regular", "VARIABLE", "variable", "CORRECTION", "correction"),
+        DeductionVocabulary("TAX", "tax", "BENEFITS", "benefit"), Decimal("0"), Decimal("160"),
+    )
+    config = replace(config, configuration_sha256=hashlib.sha256(_json_bytes(config)).hexdigest())
+    require_seed_contract(config)
+    return config
+
+
+def _sql_literal(value: Any) -> str:
+    if value is None:
+        return "NULL"
+    if type(value) is bool:
+        return "TRUE" if value else "FALSE"
+    if type(value) is int:
+        return str(value)
+    if isinstance(value, Decimal) and value.is_finite():
+        return format(value, ".2f")
+    if type(value) is date:
+        return "DATE '" + value.isoformat() + "'"
+    if type(value) is str and "\x00" not in value:
+        return "E'" + value.replace("\\", "\\\\").replace("'", "''").replace("\r", "\\r").replace("\n", "\\n") + "'"
+    raise FixtureInvariantError("Unsupported fixture SQL literal type.")
+
+
+def fixture_dump_bytes(fixture: GeneratedFixture, config: SeedConfiguration | None = None) -> bytes:
+    """Deterministic data-only INSERT snapshot. No DROP/TRUNCATE/CASCADE or ACLs.
+
+    Restore requires the separately installed frozen schema and an empty target.
+    Identity restarts use transactional ALTER SEQUENCE, not non-rollback setval.
+    """
+    config = default_seed_configuration() if config is None else config
+    if fixture.configuration_sha256 != config.configuration_sha256:
+        raise FixtureInvariantError("Fixture and seed configuration fingerprints differ.")
+    require_invariants(fixture, config)
+    lines = ["-- STARK R02 synthetic fixture; not a recovered historical dataset.",
+             "-- Data only. Apply only to an independently authorized empty fixture database.",
+             "BEGIN;", "SET LOCAL search_path TO pg_catalog, public;",
+             "SET CONSTRAINTS public.employees_manager_fk DEFERRED;"]
+    for table, columns in TABLE_COLUMNS.items():
+        for row in sorted(fixture.table(table), key=lambda row: row[TABLE_PRIMARY_KEYS[table]]):
+            lines.append(f'INSERT INTO public."{table}" (' + ", ".join('"' + column + '"' for column in columns)
+                         + ") VALUES (" + ", ".join(_sql_literal(row[column]) for column in columns) + ");")
+    # Sequence names are discovered, not guessed. ALTER RESTART is transactional.
+    lines.extend(["DO $stark_r02$", "DECLARE item record; seq text; parts text[];", "BEGIN",
+                  "  FOR item IN SELECT * FROM (VALUES"])
+    values = []
+    for table, key in TABLE_PRIMARY_KEYS.items():
+        maximum = max(row[key] for row in fixture.table(table))
+        values.append(f"    ('{table}', '{key}', {maximum + 1})")
+    lines.append(",\n".join(values))
+    lines.extend(["  ) AS v(table_name, column_name, next_id) LOOP",
+                  "    seq := pg_catalog.pg_get_serial_sequence('public.' || item.table_name, item.column_name);",
+                  "    IF seq IS NULL THEN RAISE EXCEPTION 'Missing fixture identity sequence'; END IF;",
+                  "    parts := pg_catalog.parse_ident(seq);",
+                  "    IF array_length(parts, 1) <> 2 OR parts[1] <> 'public' THEN RAISE EXCEPTION 'Unexpected fixture sequence'; END IF;",
+                  "    EXECUTE pg_catalog.format('ALTER SEQUENCE %I.%I RESTART WITH %s', parts[1], parts[2], item.next_id);",
+                  "  END LOOP;", "END;", "$stark_r02$;", "SET CONSTRAINTS ALL IMMEDIATE;", "COMMIT;"])
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _write_artifact(path: Path, payload: bytes, filename: str) -> None:
+    target = Path(path).absolute()
+    if target.name != filename or target.is_symlink() or target.resolve().name != filename:
+        raise FixtureInvariantError("Artifact output must use its dedicated filename and cannot be a symlink.")
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=target.parent, prefix=".stark-r02-", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+
+
+def write_fixture_dump(path: Path, fixture: GeneratedFixture, config: SeedConfiguration | None = None) -> str:
+    payload = fixture_dump_bytes(fixture, config)
+    _write_artifact(path, payload, "fixture_pg_dump.sql")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def planted_fact_observations(fixture: GeneratedFixture) -> Mapping[str, Any]:
+    """Observed from generated rows; not historical or live-query evidence."""
+    runs = {row["run_number"]: row for row in fixture.table("payroll_runs")}
+    year_ids = {row["payroll_run_id"] for row in runs.values() if row["pay_date"].year == 2026}
+    taxes: dict[int, Decimal] = defaultdict(lambda: Decimal(0))
+    for row in fixture.table("payroll_results"):
+        if row["payroll_run_id"] in year_ids:
+            taxes[row["employee_id"]] += row["tax_amount"]
+    current_comp = {row["employee_id"] for row in fixture.table("employee_compensation")
+                    if row["effective_date"] <= FIXTURE_DATE and (row["effective_to"] is None or FIXTURE_DATE < row["effective_to"])}
+    departments = {row["department_id"]: 0 for row in fixture.table("departments")}
+    for row in fixture.table("employees"):
+        if is_active(row) and row["employee_id"] in current_comp:
+            departments[row["department_id"]] += 1
+    mismatch = runs["PR-2026-012"]
+    mismatch_column, mismatch_amount = next(
+        (header, mismatch[header] - sum(row[detail] for row in fixture.table("payroll_results")
+                                       if row["payroll_run_id"] == mismatch["payroll_run_id"]))
+        for header, detail in HEADER_DETAIL_COLUMNS.items()
+        if mismatch[header] != sum(row[detail] for row in fixture.table("payroll_results")
+                                    if row["payroll_run_id"] == mismatch["payroll_run_id"]))
+    correction = runs["PR-2026-024"]
+    correction_results = {row["payroll_result_id"] for row in fixture.table("payroll_results")
+                          if row["payroll_run_id"] == correction["payroll_run_id"]}
+    return {
+        "negative_net_run": "PR-2026-006",
+        "negative_net_count": sum(row["net_pay"] < 0 for row in fixture.table("payroll_results")
+                                  if row["payroll_run_id"] == runs["PR-2026-006"]["payroll_run_id"]),
+        "zero_tax_2026_payees": sorted(employee for employee, tax in taxes.items() if tax == 0),
+        "header_mismatch_run": "PR-2026-012", "header_mismatch_column": mismatch_column,
+        "header_mismatch_usd": str(mismatch_amount),
+        "off_cycle_run": "PR-2026-024", "off_cycle_status": correction["status"],
+        "off_cycle_correction_count": sum(row["payroll_result_id"] in correction_results for row in fixture.table("payroll_earnings")),
+        "small_department_ids": sorted(department for department, count in departments.items() if count < 5),
+        "active_employees": sum(is_active(row) for row in fixture.table("employees")),
+        "hr_open_scopes": {str(p): sorted(a["division_id"] for a in fixture.table("hr_bp_assignments")
+                                          if a["employee_id"] == p and a["effective_to"] is None) for p in (47, 361, 364)},
+    }
+
+
+def write_fixture_manifest(path: Path, dump_path: Path, fixture: GeneratedFixture,
+                           config: SeedConfiguration | None = None) -> Mapping[str, Any]:
+    config = default_seed_configuration() if config is None else config
+    checks = require_invariants(fixture, config)
+    payload = Path(dump_path).read_bytes()
+    if payload != fixture_dump_bytes(fixture, config):
+        raise FixtureInvariantError("Dump bytes differ from the generated fixture; manifest not written.")
+    digest = hashlib.sha256(payload).hexdigest()
+    root = Path(__file__).resolve().parent
+    manifest = {
+        "fixture_version": FIXTURE_VERSION, "fixture_date": FIXTURE_DATE.isoformat(), "fixture_seed": FIXTURE_SEED,
+        "fixture_dump_sha256": digest, "sha256": digest,
+        "row_counts": {table: len(fixture.table(table)) for table in TABLE_COLUMNS},
+        "planted_facts": planted_fact_observations(fixture),
+        "invariants": [_json_value(check) for check in checks],
+        "verification": {"scope": "offline_generated_rows", "live_postgresql_verified": False,
+                         "historical_dataset_fidelity_verified": False, "historical_schema_fidelity_verified": False,
+                         "original_historical_invariant_list_recovered": False},
+        "provenance": {"baseline": "new R02 synthetic baseline authorized from Antigravity R02 design review",
+                       "configuration_sha256": fixture.configuration_sha256,
+                       "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                       "schema_sha256": hashlib.sha256((root / "schema.sql").read_bytes()).hexdigest(),
+                       "faker_version": importlib.metadata.version("Faker"), "faker_locale": "en_US",
+                       "python_version": sys.version.split()[0], "random_seed": FIXTURE_SEED},
+    }
+    _write_artifact(path, _json_bytes(manifest), "fixture_manifest.json")
+    return manifest
+
+
+class ResetSafetyError(ValueError):
+    """No destructive SQL is permitted without verified isolated ownership."""
+
+
+def require_test_database_name(name: str) -> None:
+    if (type(name) is not str or "prod" in name.lower() or name.lower() in {"postgres", "template0", "template1"}
+            or re.fullmatch(r"stark_t2sql(?:_test(?:_[a-z0-9]+)*)?", name) is None):
+        raise ResetSafetyError("Reset requires an explicitly named isolated STARK test database; critical/prod names are forbidden.")
+
+
+@dataclass(frozen=True, slots=True)
+class IsolationProof:
+    """Real owner input, not generated here or inferred from a database name.
+
+    Provision separately: database connection limit 1; COMMENT ON DATABASE JSON
+    with kind=stark_t2sql_isolated_fixture, version=1, database_oid,
+    isolation_token and schema_sha256. The token must match this private local
+    authorization file. OID/endpoint/hash must describe the actual test clone.
+    """
+
+    database_name: str
+    database_oid: int
+    server_address: str
+    server_port: int
+    isolation_token: str = field(repr=False)
+    schema_sha256: str
+
+    def __post_init__(self) -> None:
+        require_test_database_name(self.database_name)
+        if type(self.database_oid) is not int or self.database_oid <= 0:
+            raise ResetSafetyError("Actual isolated database OID is required.")
+        if not ipaddress.ip_address(self.server_address).is_loopback:
+            raise ResetSafetyError("Only numeric loopback database endpoints are allowed.")
+        if type(self.server_port) is not int or not 1 <= self.server_port <= 65535:
+            raise ResetSafetyError("Actual isolated database port is required.")
+        if type(self.isolation_token) is not str or re.fullmatch(r"[A-Za-z0-9_-]{32,128}", self.isolation_token) is None:
+            raise ResetSafetyError("Actual owner isolation token is required.")
+        if type(self.schema_sha256) is not str or re.fullmatch(r"[0-9a-f]{64}", self.schema_sha256) is None:
+            raise ResetSafetyError("Actual frozen schema SHA-256 is required.")
+
+    @classmethod
+    def from_file(cls, path: Path) -> IsolationProof:
+        with Path(path).open("rb") as source:
+            payload = source.read(65537)
+        if len(payload) > 65536:
+            raise ResetSafetyError("Isolation proof exceeds its size bound.")
+        return cls(**json.loads(payload))
+
+
+def _verify_database_identity(cursor: Any, proof: IsolationProof) -> None:
+    cursor.execute("SELECT d.datname, d.oid, pg_catalog.inet_server_addr()::text, pg_catalog.inet_server_port(), "
+                   "pg_catalog.shobj_description(d.oid, 'pg_database'), d.datconnlimit, "
+                   "d.datdba = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = current_user) "
+                   "FROM pg_catalog.pg_database d WHERE d.datname = pg_catalog.current_database()")
+    row = cursor.fetchone()
+    if row is None:
+        raise ResetSafetyError("Actual database identity is unavailable.")
+    name, oid, address, port, comment, connection_limit, owns_database = row
+    expected = {"kind": "stark_t2sql_isolated_fixture", "version": 1, "database_oid": proof.database_oid,
+                "isolation_token": proof.isolation_token, "schema_sha256": proof.schema_sha256}
+    try:
+        marker = json.loads(comment)
+    except (ValueError, TypeError) as exc:
+        raise ResetSafetyError("Database has no independently provisioned isolation marker.") from exc
+    if ((name, oid, address, port) != (proof.database_name, proof.database_oid, proof.server_address, proof.server_port)
+            or marker != expected or connection_limit != 1 or owns_database is not True):
+        raise ResetSafetyError("Database identity, owner, single-client limit or marker differs from authorization.")
+    cursor.execute("SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datid = %s "
+                   "AND pid <> pg_catalog.pg_backend_pid() AND backend_type = 'client backend'", (oid,))
+    if cursor.fetchone()[0] != 0:
+        raise ResetSafetyError("The isolated fixture database has other active clients.")
+
+
+def _verify_isolated_schema(cursor: Any, root: Path) -> None:
+    """Audit before truncation. Refuse extras, inheritance and executable hooks."""
+    cursor.execute("SELECT n.nspname, c.relname, c.relkind, c.relispartition FROM pg_catalog.pg_class c "
+                   "JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "
+                   "WHERE n.nspname NOT IN ('pg_catalog','information_schema') "
+                   "AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp_%' "
+                   "AND c.relkind IN ('r','p','v','m','f') ORDER BY n.nspname,c.relname")
+    if set(cursor.fetchall()) != {("public", table, "r", False) for table in TABLE_COLUMNS}:
+        raise ResetSafetyError("Database must contain only the twelve ordinary fixture tables; unrelated objects are forbidden.")
+    _require_database_shape(cursor)
+    source = re.sub(r"--[^\n]*", "", (root / "schema.sql").read_text(encoding="utf-8"))
+    expected = []
+    constraints = set()
+    for table, body in re.findall(r"CREATE TABLE public\.([a-z_]+)\s*\((.*?)\n\);", source, re.S):
+        for column, datatype, tail in re.findall(r"^\s+([a-z_]+) (INTEGER|TEXT|VARCHAR\(\d+\)|NUMERIC\(\d+,\d+\)|DATE|BOOLEAN)([^\n]*)", body, re.M):
+            formatted = datatype.lower().replace("varchar", "character varying")
+            expected.append((table, column, formatted, "NOT NULL" in tail or column == TABLE_PRIMARY_KEYS[table],
+                             "d" if "AS IDENTITY" in tail else ""))
+        for name, kind in re.findall(r"CONSTRAINT ([a-z_]+)\s+(PRIMARY KEY|UNIQUE|CHECK|FOREIGN KEY)", body):
+            constraints.add((table, name, {"PRIMARY KEY": "p", "UNIQUE": "u", "CHECK": "c", "FOREIGN KEY": "f"}[kind]))
+    cursor.execute("SELECT c.relname,a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull,a.attidentity "
+                   "FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid "
+                   "JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "
+                   "WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum")
+    if set(cursor.fetchall()) != set(expected):
+        raise ResetSafetyError("Live column types/nullability/identities do not match frozen schema.sql.")
+    cursor.execute("SELECT c.relname,k.conname,k.contype,k.convalidated FROM pg_catalog.pg_constraint k "
+                   "JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "
+                   "WHERE n.nspname='public'")
+    live_constraints = cursor.fetchall()
+    if {(t, name, kind) for t, name, kind, valid in live_constraints if valid} != constraints or any(not row[3] for row in live_constraints):
+        raise ResetSafetyError("Live constraint inventory differs from frozen schema.sql.")
+    expected_keys = set()
+    for table, body in re.findall(r"CREATE TABLE public\.([a-z_]+)\s*\((.*?)\n\);", source, re.S):
+        for match in re.finditer(r"CONSTRAINT ([a-z_]+)\s+(PRIMARY KEY|UNIQUE|FOREIGN KEY)\s*\(([^)]+)\)(.*?)(?=,\s*CONSTRAINT|\Z)", body, re.S):
+            name, kind, columns, tail = match.groups()
+            reference = re.search(r"REFERENCES public\.([a-z_]+)\s*\(([^)]+)\)", tail) if kind == "FOREIGN KEY" else None
+            expected_keys.add((table, name, tuple(c.strip() for c in columns.split(",")),
+                               "public" if reference else None, reference[1] if reference else None,
+                               tuple(c.strip() for c in reference[2].split(",")) if reference else (),
+                               "DEFERRABLE" in tail and "NOT DEFERRABLE" not in tail, False,
+                               "a" if reference else None, "r" if reference else None))
+    cursor.execute("SELECT c.relname,k.conname, "
+                   "ARRAY(SELECT a.attname FROM unnest(k.conkey) WITH ORDINALITY x(num,ord) "
+                   "JOIN pg_catalog.pg_attribute a ON a.attrelid=k.conrelid AND a.attnum=x.num ORDER BY x.ord), "
+                   "rn.nspname,rc.relname, "
+                   "ARRAY(SELECT a.attname FROM unnest(k.confkey) WITH ORDINALITY x(num,ord) "
+                   "JOIN pg_catalog.pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.num ORDER BY x.ord), "
+                   "k.condeferrable,k.condeferred, "
+                   "CASE WHEN k.contype='f' THEN k.confupdtype::text END, "
+                   "CASE WHEN k.contype='f' THEN k.confdeltype::text END "
+                   "FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid "
+                   "JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "
+                   "LEFT JOIN pg_catalog.pg_class rc ON rc.oid=k.confrelid "
+                   "LEFT JOIN pg_catalog.pg_namespace rn ON rn.oid=rc.relnamespace "
+                   "WHERE n.nspname='public' AND k.contype IN ('p','u','f')")
+    live_keys = {(t, name, tuple(cols), ns, target, tuple(refs), deferred, initially, update, delete)
+                 for t, name, cols, ns, target, refs, deferred, initially, update, delete in cursor.fetchall()}
+    if live_keys != expected_keys:
+        raise ResetSafetyError("Live primary/unique/foreign keys or deferral/actions differ from schema.sql.")
+    cursor.execute("SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits), "
+                   "EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid "
+                   "JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND NOT t.tgisinternal), "
+                   "EXISTS (SELECT 1 FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON c.oid=r.ev_class "
+                   "JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public'), "
+                   "EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace "
+                   "WHERE n.nspname NOT IN ('pg_catalog','information_schema'))")
+    if any(cursor.fetchone()):
+        raise ResetSafetyError("Inheritance, user triggers/rules or custom routines are forbidden in a reset target.")
+    # Reject foreign keys into the fixture from anywhere; RESTRICT provides a
+    # second, database-enforced stop even if catalog state changes unexpectedly.
+    cursor.execute("SELECT sn.nspname,s.relname,tn.nspname,t.relname FROM pg_catalog.pg_constraint k "
+                   "JOIN pg_catalog.pg_class s ON s.oid=k.conrelid JOIN pg_catalog.pg_namespace sn ON sn.oid=s.relnamespace "
+                   "JOIN pg_catalog.pg_class t ON t.oid=k.confrelid JOIN pg_catalog.pg_namespace tn ON tn.oid=t.relnamespace "
+                   "WHERE k.contype='f' AND tn.nspname='public' AND t.relname=ANY(%s)", (list(TABLE_COLUMNS),))
+    if any(sn != "public" or tn != "public" or s not in TABLE_COLUMNS or t not in TABLE_COLUMNS for sn,s,tn,t in cursor.fetchall()):
+        raise ResetSafetyError("Foreign keys outside the fixture reset set are forbidden.")
+
+
+def _read_fixture(cursor: Any, configuration: SeedConfiguration) -> GeneratedFixture:
+    from psycopg2 import sql
+    data = {}
+    for table, columns in TABLE_COLUMNS.items():
+        cursor.execute(sql.SQL("SELECT {} FROM {} ORDER BY {}").format(
+            sql.SQL(", ").join(sql.Identifier(column) for column in columns),
+            sql.Identifier("public", table), sql.Identifier(TABLE_PRIMARY_KEYS[table])))
+        data[table] = tuple(MappingProxyType(dict(zip(columns, row))) for row in cursor.fetchall())
+    return GeneratedFixture(MappingProxyType(data), configuration.configuration_sha256, configuration.fidelity)
+
+
+def create_fixture(configuration_path: Path | None = None, *, project_root: Path | None = None,
+                   admin_source: Any, reset: bool = False, authorization: IsolationProof | None = None,
+                   database_name: str | None = None) -> FixtureCreationSummary:
+    """Atomic scoped load/reset; no database creation, marker creation or CASCADE.
+
+    All catalog/isolation guards precede the first destructive statement. The
+    18 checks and exact row comparison run before commit, then on a fresh read.
+    PostgreSQL sequence RESTART is transactional, unlike setval.
     """
     from stark_t2sql.db.connections import AdminConnectionSource
-
     if type(admin_source) is not AdminConnectionSource:
-        raise MissingSeedInputError("Fixture loading requires the explicit trusted administrative source; runtime/evaluation/candidate sources are forbidden.")
-    root = project_root.resolve()
+        raise MissingSeedInputError("Fixture loading requires the explicit trusted administrative source.")
+    if type(reset) is not bool or type(authorization) is not IsolationProof:
+        raise ResetSafetyError("A real isolated-test database authorization is mandatory.")
+    require_test_database_name(database_name)
+    credentials = admin_source.alias.load_credentials()
+    if (credentials.database != database_name or authorization.database_name != database_name
+            or (credentials.host, credentials.port) != (authorization.server_address, authorization.server_port)):
+        raise ResetSafetyError("Configured database/endpoint differs from explicit authorization.")
+    root = Path(__file__).resolve().parent if project_root is None else project_root.resolve()
     if admin_source.config.paths.root.resolve() != root:
-        raise MissingSeedInputError("The administrative source and intended fixture workspace differ.")
-    config = load_seed_configuration(configuration_path, project_root=root)
+        raise ResetSafetyError("Administrative source and fixture workspace differ.")
+    if hashlib.sha256((root / "schema.sql").read_bytes()).hexdigest() != authorization.schema_sha256:
+        raise ResetSafetyError("Isolation proof does not bind the current frozen schema.sql.")
+    config = default_seed_configuration() if configuration_path is None else load_seed_configuration(configuration_path, project_root=root)
     fixture = generate_fixture(config)
-    invariants = require_invariants(fixture, config)
-    # Lazy external dependency: importing this source never imports a DB driver.
-    try:
-        from psycopg2 import sql
-    except ImportError as exc:
-        raise MissingSeedInputError("The future fixture loader requires the installed psycopg2 dependency.") from exc
+    from psycopg2 import sql
     with admin_source.connection(readonly=False) as connection:
         with connection.cursor() as cursor:
-            _require_database_shape(cursor)
-            # Locks serialize this explicit owner operation and preserve the
-            # empty-target guarantee until the encompassing transaction ends.
-            for table in TABLE_COLUMNS:
-                cursor.execute(sql.SQL("LOCK TABLE {} IN ACCESS EXCLUSIVE MODE").format(sql.Identifier("public", table)))
-            for table in TABLE_COLUMNS:
-                cursor.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM {} LIMIT 1)").format(sql.Identifier("public", table)))
-                if cursor.fetchone()[0]:
-                    raise MissingSeedInputError("Fixture loading requires all twelve tables to be empty; source supplies no destructive reset.")
-            cursor.execute("SET CONSTRAINTS employees_manager_fk DEFERRED")
-            # The reviewed table order puts references/employees before facts.
+            _verify_database_identity(cursor, authorization)
+            cursor.execute("SET LOCAL search_path TO pg_catalog, public")
+            cursor.execute("SET LOCAL lock_timeout = '5s'")
+            cursor.execute("SET LOCAL statement_timeout = '30s'")
+            tables = sql.SQL(", ").join(sql.SQL("ONLY {}").format(sql.Identifier("public", table)) for table in TABLE_COLUMNS)
+            cursor.execute(sql.SQL("LOCK TABLE {} IN ACCESS EXCLUSIVE MODE").format(tables))
+            _verify_isolated_schema(cursor, root)
+            sequences = {}
+            for table, key in TABLE_PRIMARY_KEYS.items():
+                cursor.execute("SELECT n.nspname,c.relname FROM pg_catalog.pg_class c "
+                               "JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace "
+                               "JOIN pg_catalog.pg_depend d ON d.objid=c.oid AND d.classid='pg_catalog.pg_class'::regclass "
+                               "WHERE c.relkind='S' AND c.oid=pg_catalog.pg_get_serial_sequence(%s,%s)::regclass "
+                               "AND d.refobjid=%s::regclass AND d.deptype IN ('a','i') "
+                               "AND d.refobjsubid=(SELECT attnum FROM pg_catalog.pg_attribute WHERE attrelid=%s::regclass AND attname=%s)",
+                               ("public." + table, key, "public." + table, "public." + table, key))
+                sequence = cursor.fetchone()
+                if sequence is None or sequence[0] != "public" or tuple(sequence) in sequences.values():
+                    raise ResetSafetyError("Identity sequence is not uniquely owned by its fixture key.")
+                sequences[table] = tuple(sequence)
+            if reset:
+                # Do not restart every possibly-owned sequence implicitly.
+                # Only the 12 individually verified key sequences change below.
+                cursor.execute(sql.SQL("TRUNCATE TABLE {} CONTINUE IDENTITY RESTRICT").format(tables))
+            else:
+                for table in TABLE_COLUMNS:
+                    cursor.execute(sql.SQL("SELECT EXISTS (SELECT 1 FROM {} LIMIT 1)").format(sql.Identifier("public", table)))
+                    if cursor.fetchone()[0]:
+                        raise ResetSafetyError("Non-empty fixture requires explicit --reset.")
+            cursor.execute("SET CONSTRAINTS public.employees_manager_fk DEFERRED")
             for table, columns in TABLE_COLUMNS.items():
                 statement = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
-                    sql.Identifier("public", table),
-                    sql.SQL(", ").join(sql.Identifier(column) for column in columns),
-                    sql.SQL(", ").join(sql.Placeholder() for _ in columns),
-                )
+                    sql.Identifier("public", table), sql.SQL(", ").join(sql.Identifier(column) for column in columns),
+                    sql.SQL(", ").join(sql.Placeholder() for _ in columns))
                 cursor.executemany(statement, [tuple(row[column] for column in columns) for row in fixture.table(table)])
-            # Explicit identities were owner supplied; align future identity
-            # allocations without guessing sequence identifiers.
-            for table, primary_key in TABLE_PRIMARY_KEYS.items():
-                cursor.execute("SELECT pg_catalog.pg_get_serial_sequence(%s, %s)", ("public." + table, primary_key))
-                sequence = cursor.fetchone()[0]
-                maximum = max((row[primary_key] for row in fixture.table(table)), default=0)
-                if sequence is None:
-                    raise MissingSeedInputError("The reviewed target identity sequence is unavailable.")
-                cursor.execute("SELECT pg_catalog.setval(%s::pg_catalog.regclass, %s, %s)", (sequence, max(maximum, 1), maximum > 0))
-    return FixtureCreationSummary(
-        FIXTURE_VERSION, config.configuration_sha256, config.fidelity.historical_schema_sha256,
-        config.fidelity.project_schema_sha256,
-        MappingProxyType({table: len(fixture.table(table)) for table in TABLE_COLUMNS}), invariants,
-    )
+            for table, key in TABLE_PRIMARY_KEYS.items():
+                cursor.execute(sql.SQL("ALTER SEQUENCE {} RESTART WITH {}").format(
+                    sql.Identifier(*sequences[table]), sql.Literal(max(row[key] for row in fixture.table(table)) + 1)))
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+            observed = _read_fixture(cursor, config)
+            require_invariants(observed, config)
+            if observed.rows != fixture.rows:
+                raise FixtureInvariantError("Database round trip differs from generated rows; transaction rolled back.")
+    with admin_source.connection(readonly=True) as connection:
+        with connection.cursor() as cursor:
+            _verify_database_identity(cursor, authorization)
+            checks = require_invariants(_read_fixture(cursor, config), config)
+    return FixtureCreationSummary(FIXTURE_VERSION, config.configuration_sha256,
+                                  config.fidelity.historical_schema_sha256 if config.fidelity else None,
+                                  authorization.schema_sha256,
+                                  MappingProxyType({table: len(fixture.table(table)) for table in TABLE_COLUMNS}), checks, True)
+
+
+def _cli_admin_source(root: Path) -> Any:
+    # Direct script execution does not require installing the project package.
+    sys.path.insert(0, str(root / "src"))
+    from stark_t2sql.config import DatabaseConnectionAlias, load_config
+    from stark_t2sql.db.connections import AdminConnectionSource
+    from stark_t2sql.utils.local_only import LoopbackEndpoint
+    user = os.environ.get("STARK_R02_ADMIN_USER")
+    if not user:
+        raise ResetSafetyError("Explicit STARK_R02_ADMIN_USER, STARK_R02_DB_NAME and STARK_R02_DB_PASSWORD are required.")
+    port = int(os.environ.get("STARK_R02_DB_PORT", "5432"))
+    alias = DatabaseConnectionAlias("r02_setup", user, "127.0.0.1", port, "STARK_R02_DB_NAME", "STARK_R02_DB_PASSWORD")
+    base = load_config(root)
+    config = replace(base, database_connections=base.database_connections + (alias,),
+                     allowed_runtime_endpoints=base.allowed_runtime_endpoints + (LoopbackEndpoint("postgresql", "127.0.0.1", port),))
+    return AdminConnectionSource(config, "r02_setup")
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry-run", action="store_true", help="In-memory generation/checks only (default).")
+    parser.add_argument("--reset", action="store_true", help="Explicit isolated-test database reset; requires proof.")
+    parser.add_argument("--database-name")
+    parser.add_argument("--isolation-proof", type=Path, help="Actual owner proof matching pre-provisioned database COMMENT.")
+    parser.add_argument("--export-dump", type=Path)
+    parser.add_argument("--export-manifest", type=Path)
+    args = parser.parse_args(argv)
+    if args.dry_run and (args.reset or args.export_dump or args.export_manifest):
+        parser.error("--dry-run cannot be combined with database or file-write actions.")
+    if args.reset and (not args.database_name or args.isolation_proof is None):
+        parser.error("--reset requires --database-name and a real --isolation-proof; name alone is insufficient.")
+    try:
+        if args.reset:
+            require_test_database_name(args.database_name)
+            proof = IsolationProof.from_file(args.isolation_proof)
+            source = _cli_admin_source(Path(__file__).resolve().parent)
+            try:
+                create_fixture(admin_source=source, reset=True, authorization=proof, database_name=args.database_name)
+            finally:
+                source.close()
+        config = default_seed_configuration()
+        fixture = generate_fixture(config)
+        checks = require_invariants(fixture, config)
+        if args.export_dump:
+            if args.export_manifest and args.export_dump.resolve() == args.export_manifest.resolve():
+                raise FixtureInvariantError("Dump and manifest paths must be different.")
+            write_fixture_dump(args.export_dump, fixture, config)
+        if args.export_manifest:
+            write_fixture_manifest(args.export_manifest, args.export_dump or Path(__file__).resolve().parent / "fixture_pg_dump.sql", fixture, config)
+        print(json.dumps({"fixture_version": FIXTURE_VERSION, "row_counts": {table: len(fixture.table(table)) for table in TABLE_COLUMNS},
+                          "operational_invariants_satisfied": sum(check.satisfied for check in checks),
+                          "planted_facts": planted_fact_observations(fixture),
+                          "database_action": "verified_reset" if args.reset else "none",
+                          "historical_dataset_fidelity_verified": False}, sort_keys=True))
+        return 0
+    except Exception as exc:
+        # Do not echo credentials, DSNs, isolation tokens or raw driver text.
+        reason = str(exc) if isinstance(exc, (ResetSafetyError, FixtureInvariantError, MissingSeedInputError)) else type(exc).__name__
+        print("R02 operation refused or failed: " + reason, file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

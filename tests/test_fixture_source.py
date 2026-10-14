@@ -85,9 +85,10 @@ def test_missing_historical_schema_is_not_substituted_with_current_schema(tmp_pa
         seed_data.load_seed_configuration(config, project_root=tmp_path)
 
 
-def test_generator_rejects_an_absent_typed_owner_configuration():
-    with pytest.raises(seed_data.MissingSeedInputError, match="owner configuration"):
-        seed_data.generate_fixture(None)
+def test_default_generation_is_a_new_baseline_without_historical_fidelity_claim():
+    fixture = seed_data.generate_fixture()
+    assert len(fixture.table("employees")) == 500
+    assert fixture.fidelity is None
 
 
 def test_loader_rejects_non_administrative_capability_before_reading_inputs(tmp_path):
@@ -96,12 +97,10 @@ def test_loader_rejects_non_administrative_capability_before_reading_inputs(tmp_
                                  project_root=tmp_path, admin_source=object())
 
 
-def test_no_real_dump_manifest_or_output_file_writer_is_exposed():
-    # API ownership: exporting the authoritative dump/manifest is deliberately
-    # a separate task and must not be implied by the source generator.
-    assert not hasattr(seed_data, "write_fixture_dump")
-    assert not hasattr(seed_data, "write_fixture_manifest")
-    assert not hasattr(seed_data, "export_fixture")
+def test_r02_explicit_export_functions_are_available_without_import_side_effects():
+    assert callable(seed_data.write_fixture_dump)
+    assert callable(seed_data.write_fixture_manifest)
+    assert callable(seed_data.main)
 
 
 def test_empty_row_contract_cannot_be_taken_as_a_complete_fixture():
