@@ -1,4 +1,4 @@
-"""Extraction, decoding and unavailable-template source contracts; no model calls."""
+"""Extraction, decoding and missing-template-contract behavior; no model calls."""
 import pytest
 
 from stark_t2sql.contracts import FailureClass
@@ -39,7 +39,7 @@ def test_token_cap_with_completed_first_semicolon_keeps_complete_candidate():
     assert extract_sql(generation) == "SELECT 1;"
 
 
-def test_frozen_decoding_and_explicit_missing_template(project_root):
+def test_frozen_decoding_and_missing_template_contract(project_root):
     decoding = DecodingDefaults()
     assert decoding.temperature == 0 and decoding.seed == 42 and decoding.max_tokens == 300
     assert decoding.stop == (";",) and decoding.timeout_seconds == 120

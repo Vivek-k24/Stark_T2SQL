@@ -87,9 +87,9 @@ def require_authoritative_template(project_root):
     template_path = project_root / "src" / "inference" / "prompt_template.txt"
     missing = []
     if not contract_path.is_file():
-        missing.append("owner-approved template contract and exact canonical as-of prefix")
+        missing.append("owner-approved canonical as-of prefix and its contract record")
     if not template_path.is_file():
-        missing.append("approved local src/inference/prompt_template.txt artifact")
+        missing.append("pinned official src/inference/prompt_template.txt artifact")
     if missing:
         pytest.fail("BLOCKED R01 acceptance: missing " + "; ".join(missing) + ". Unit regressions are not acceptance evidence.", pytrace=False)
     contract = ReviewedTemplateContract(**json.loads(contract_path.read_text(encoding="utf-8")))
@@ -97,6 +97,21 @@ def require_authoritative_template(project_root):
         pytest.fail("BLOCKED R01 acceptance: owner provenance must identify the pinned Defog source revision.", pytrace=False)
     assert contract.template_sha256 == OFFICIAL_TEMPLATE_SHA256
     return load_template(template_path, contract=contract)
+
+
+def test_pinned_official_file_matches_frozen_upstream_bytes(project_root):
+    """Upstream byte identity is independent of the owner's prefix decision."""
+    source = (project_root / "src" / "inference" / "prompt_template.txt").read_bytes()
+    assert len(source) == 306
+    assert hashlib.sha256(source).hexdigest() == OFFICIAL_TEMPLATE_SHA256
+    assert source.decode("utf-8").encode("utf-8") == source
+    assert not source.startswith(b"\xef\xbb\xbf")
+    assert b"\r" not in source and source.endswith(b"\n")
+    for marker, count in (
+        (b"[QUESTION]", 2), (b"[/QUESTION]", 2), (b"{user_question}", 2),
+        (b"{table_metadata_string_DDL_statements}", 1),
+    ):
+        assert source.count(marker) == count
 
 
 @pytest.mark.r01_acceptance
