@@ -23,12 +23,14 @@ def principal_expression() -> str:
     return "NULLIF(pg_catalog.current_setting('app.principal_id', true), '')::int"
 
 
-def scope_function_statements(matrix: PolicyMatrix, *, definer_owner: str) -> tuple[str, ...]:
+def scope_function_statements(
+    matrix: PolicyMatrix, *, definer_owner: str, baseline_eval_login: str | None = None
+) -> tuple[str, ...]:
     function = qualified_name(matrix.schema, "hr_bp_current_divisions") + "()"
     assignments = qualified_name(matrix.schema, "hr_bp_assignments")
     owner = quote_identifier(definer_owner)
     principals = "PUBLIC, " + ", ".join(
-        quote_identifier(name) for name in managed_role_names(matrix, definer_owner)
+        quote_identifier(name) for name in managed_role_names(matrix, definer_owner, baseline_eval_login)
     )
     return (
         f"""CREATE OR REPLACE FUNCTION {function}
