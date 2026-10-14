@@ -38,7 +38,17 @@ class SubmittedAnswer:
 
 
 def initialize_state(state: MutableMapping[str, object]) -> None:
-    state.setdefault(BUSY_KEY, False)
+    """Recover an abandoned busy flag only when no UI request owns the lock.
+
+    Streamlit session state can outlive an interrupted script run. A stale True
+    value must not strand every subsequent rerun behind st.stop(). The global
+    nonblocking request lock remains the real concurrency guard; never clear a
+    busy flag while any request still holds it.
+    """
+    if state.get(BUSY_KEY) is True and not _UI_REQUEST_LOCK.locked():
+        state[BUSY_KEY] = False
+    else:
+        state.setdefault(BUSY_KEY, False)
 
 
 def session_is_busy(state: MutableMapping[str, object]) -> bool:
