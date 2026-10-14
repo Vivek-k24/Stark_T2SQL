@@ -21,6 +21,7 @@ from .models import SemanticCatalog
 
 
 _PARAMETER = re.compile(r"(?<!:):([a-zA-Z_][a-zA-Z_0-9]*)(?![a-zA-Z_0-9])")
+_CAST_AS_OF_PARAMETER = re.compile(r"CAST\(\s*:as_of_date\s+AS\s+DATE\s*\)", re.IGNORECASE)
 _AS_OF_PARAMETER = re.compile(r"(?<!:):as_of_date(?![a-zA-Z_0-9])")
 
 
@@ -29,7 +30,9 @@ def _bind_date(fragment: str, as_of_date: date) -> str:
     if parameters - {"as_of_date"}:
         raise ConfigurationError("A governed fragment has an unsupported runtime parameter.")
     # The value originates only from a typed date, never user SQL or text.
-    return _AS_OF_PARAMETER.sub("DATE '" + as_of_date.isoformat() + "'", fragment)
+    date_literal = "DATE '" + as_of_date.isoformat() + "'"
+    bound = _CAST_AS_OF_PARAMETER.sub(date_literal, fragment)
+    return _AS_OF_PARAMETER.sub(date_literal, bound)
 
 
 def compile_metric(

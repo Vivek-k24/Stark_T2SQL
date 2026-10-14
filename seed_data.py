@@ -504,7 +504,7 @@ def is_active(employee: Mapping[str, Any], as_of_date: date = FIXTURE_DATE) -> b
         employee["hire_date"] <= as_of_date
         and (employee["termination_date"] is None or employee["termination_date"] > as_of_date)
         and employee["status"] != "cancelled_pre_hire"
-        and employee["employment_type"] != "contractor"
+        and employee["employment_type"] in ("full_time", "part_time")
     )
 
 

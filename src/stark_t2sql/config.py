@@ -295,17 +295,19 @@ def load_config(
         measurement_path = project_root / measurement_path
 
     # These ports are initial configuration assumptions, not discovered services.
-    model_port = _integer_setting(values, "STARK_LLAMACPP_PORT", default=8080)
+    model_port = _integer_setting(values, "STARK_LLAMACPP_PORT", default=8081)
     database_port = _integer_setting(values, "STARK_PG_PORT", default=5432)
     if model_port is None or database_port is None:
         raise ConfigurationError("Runtime endpoint ports must be supplied.")
     model_endpoint = LoopbackEndpoint("http", values.get("STARK_LLAMACPP_HOST", "127.0.0.1"), model_port)
+    alt_port = 8080 if model_port == 8081 else 8081
+    alt_model_endpoint = LoopbackEndpoint("http", model_endpoint.host, alt_port)
     database_endpoint = LoopbackEndpoint(
         "postgresql", values.get("STARK_PG_HOST", "127.0.0.1"), database_port
     )
     model_host = f"[{model_endpoint.host}]" if ":" in model_endpoint.host else model_endpoint.host
     model_url = f"http://{model_host}:{model_endpoint.port}"
-    endpoints = (model_endpoint, database_endpoint)
+    endpoints = (model_endpoint, alt_model_endpoint, database_endpoint)
 
     row_cap = _integer_setting(values, "STARK_OUTPUT_ROW_CAP", default=1000)
     if row_cap is None:

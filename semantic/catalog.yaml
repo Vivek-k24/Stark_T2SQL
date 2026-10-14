@@ -127,7 +127,7 @@ metrics:
     null_handling: Employee identifiers are required.
     units: rows
     temporal_rule_ids: []
-    allowed_scopes: [direct_reports]
+    allowed_scopes: [all, assigned_divisions, direct_reports]
     dependencies: []
     pending_roles: []
   posted_closed_payroll_run_count:

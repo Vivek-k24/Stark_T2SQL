@@ -165,7 +165,7 @@ def build_context(
         expected_physical = compile_schema(full_snapshot, matrix, request.persona.business_role)
         if physical.snapshot != expected_physical.snapshot:
             raise ConfigurationError("Physical and semantic metadata do not share the same role projection.")
-    semantic = compile_semantics(catalog, matrix, full_snapshot, request.persona.business_role)
+    semantic = compile_semantics(catalog, matrix, full_snapshot, request.persona.business_role, as_of_date=request.as_of_date)
     return CompiledContext(
         request=request, prompt_version=2, ddl=physical.ddl, semantic_text=semantic.text,
         ddl_sha256=physical.sha256, semantic_sha256=semantic.sha256,
@@ -319,11 +319,11 @@ def build_harness_context(
     require_catalog_contract(catalog, snapshot, matrix)
     if request.mode is ExecutionMode.NO_PROMPT_FILTER:
         physical = compile_full_schema(snapshot, matrix)
-        semantic = compile_full_semantics(catalog, matrix)
+        semantic = compile_full_semantics(catalog, matrix, as_of_date=request.as_of_date)
         profile = "E5_NO_PROMPT_FILTER"
     elif request.mode in {ExecutionMode.FULL, ExecutionMode.NO_VALIDATOR}:
         physical = compile_schema(snapshot, matrix, request.persona.business_role)
-        semantic = compile_semantics(catalog, matrix, snapshot, request.persona.business_role)
+        semantic = compile_semantics(catalog, matrix, snapshot, request.persona.business_role, as_of_date=request.as_of_date)
         profile = "E5_ROLE_FILTERED"
     else:
         raise HarnessSafetyStopError("The requested E5 harness context profile is undefined.")

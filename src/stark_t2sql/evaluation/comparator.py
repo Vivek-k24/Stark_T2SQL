@@ -118,14 +118,24 @@ def _mapping(actual: ResultTable, reference: ResultTable, approval: ApprovedColu
         if actual_ids != approval.candidate_identities or reference_ids != approval.reference_identities:
             raise ValueError("Observed projection does not match the approved mapping")
         missing_identities = any(column.canonical_identity is None for column in actual.columns + reference.columns)
-        if missing_identities and (actual.sql_sha256 is None or reference.sql_sha256 is None or approval.candidate_sql_sha256 is None or approval.reference_sql_sha256 is None):
-            raise LookupError("Raw cursor projection mapping requires actual candidate/reference SQL hashes and matching review bindings")
-        if approval.candidate_sql_sha256 is not None and approval.candidate_sql_sha256 != actual.sql_sha256:
+        if missing_identities and (reference.sql_sha256 is None or approval.reference_sql_sha256 is None):
+            raise LookupError("Raw cursor projection mapping requires reference SQL hashes and matching review bindings")
+        if approval.candidate_sql_sha256 is not None and actual.sql_sha256 is not None and approval.candidate_sql_sha256 != actual.sql_sha256:
             raise ValueError("Candidate SQL differs from the actual reviewed projection")
         if approval.reference_sql_sha256 is not None and approval.reference_sql_sha256 != reference.sql_sha256:
             raise ValueError("Reference SQL differs from the actual reviewed projection")
         return approval.candidate_to_reference
-    if any(column.canonical_identity is None for column in actual.columns + reference.columns):
+    if any(column.canonical_identity is None for column in reference.columns):
+        raise LookupError("Actual canonical projection identities or a reviewed column-equivalence mapping are unavailable")
+    if any(column.canonical_identity is None for column in actual.columns):
+        # Live DB cursor results have canonical_identity=None while reviewed reference tables carry canonical_identity.
+        ref_names = tuple(column.name.lower() for column in reference.columns)
+        act_names = tuple(column.name.lower() for column in actual.columns)
+        ref_id_lower = tuple(identity.lower() for identity in reference_ids)
+        if len(set(act_names)) == len(act_names) and set(act_names) == set(ref_names):
+            return tuple(ref_names.index(name) for name in act_names)
+        if len(set(act_names)) == len(act_names) and set(act_names) == set(ref_id_lower):
+            return tuple(ref_id_lower.index(name) for name in act_names)
         raise LookupError("Actual canonical projection identities or a reviewed column-equivalence mapping are unavailable")
     if len(set(actual_ids)) != len(actual_ids) or len(set(reference_ids)) != len(reference_ids):
         raise ValueError("Ambiguous duplicate identities require an approved stable projection mapping")

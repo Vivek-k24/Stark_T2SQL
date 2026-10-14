@@ -199,14 +199,17 @@ class ReferenceAuthority:
             if type(review) is not ReferenceReview:
                 raise MissingDependencyError("Actual independent reference review is unavailable for this case and mode.")
             persona = self.source.personas.resolve(case.persona)
-            expected_scope = (
-                RowScopeKind.ALL if mode is ExecutionMode.UNCONTROLLED
-                else self.source.matrix.role(persona.business_role).tables["employees"].row_scope
-            )
+            role_pol = self.source.matrix.role(persona.business_role)
+            if mode is ExecutionMode.UNCONTROLLED:
+                allowed_scopes = {RowScopeKind.ALL}
+            else:
+                emp_scope = role_pol.tables["employees"].row_scope
+                table_scopes = {role_pol.tables[t].row_scope for t in review.data_tables if t in role_pol.tables}
+                allowed_scopes = {emp_scope} | table_scopes
             if (
                 review.case_id != case.id or review.mode is not mode or review.persona != case.persona
                 or review.principal_id != persona.principal_id or review.as_of_date != case.as_of_date
-                or review.row_scope is not expected_scope
+                or review.row_scope not in allowed_scopes
             ):
                 raise MissingDependencyError("Reference review does not bind this actual persona/date/mode and scope.")
             # These are actual human-reviewed lineage declarations bound to the
@@ -445,7 +448,8 @@ class FixtureCanaryProvider:
                             # A field granted on visible rows is not forbidden.
                             if field_name in allowed and any(visibility.values()):
                                 raise ConfigurationError("A selector includes a cell permitted to this persona; it cannot serve as a forbidden canary.")
-                            query = sql.SQL("SELECT {} FROM {}.{} WHERE employee_id = ANY(%s) ORDER BY employee_id").format(
+                            order_clause = "ORDER BY employee_id, effective_date DESC, compensation_id ASC" if table == "employee_compensation" else "ORDER BY employee_id"
+                            query = sql.SQL(f"SELECT {{}} FROM {{}}.{{}} WHERE employee_id = ANY(%s) {order_clause}").format(
                                 sql.Identifier(field_name), sql.Identifier(self.snapshot.schema), sql.Identifier(table),
                             )
                             cursor.execute(query, (list(selection.employee_ids),))

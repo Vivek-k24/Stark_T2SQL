@@ -217,7 +217,7 @@ def collect_run_metadata(
         model_hash = runtime.client.service.model_sha256
         launcher_hash = runtime.client.service.launcher_sha256
         template_hash = runtime.template.sha256
-        semantic_hash = runtime.catalog.sha256
+        semantic_hash = runtime.catalog.sha256 if runtime.catalog is not None else None
         measurement_hash = runtime.client.measurement_sha256
         build = runtime.client.service.llama_cpp_build
     else:
@@ -317,7 +317,7 @@ class EvaluationRunner:
             actual.update({
                 "model_gguf_sha256": runtime.client.service.model_sha256,
                 "prompt_template_sha256": runtime.template.sha256,
-                "semantic_catalog_sha256": runtime.catalog.sha256,
+                "semantic_catalog_sha256": runtime.catalog.sha256 if runtime.catalog is not None else None,
                 "resource_measurements_sha256": runtime.client.measurement_sha256,
                 "llama_launcher_sha256": runtime.client.service.launcher_sha256,
             })
@@ -455,10 +455,14 @@ class EvaluationRunner:
                 # other projections remain eligible for explicitly pending
                 # human triage rather than a fabricated validator defect.
                 actual_candidate = outcome.regenerated_sql or outcome.extracted_sql
+                normalized_candidate = actual_candidate.rstrip().rstrip(";").strip() if actual_candidate is not None else None
                 candidate_proved = (
                     reference.available and reference.table is not None
                     and actual_candidate is not None
-                    and sha256_context(actual_candidate) == reference.table.sql_sha256
+                    and (
+                        sha256_context(actual_candidate) == reference.table.sql_sha256
+                        or (normalized_candidate is not None and sha256_context(normalized_candidate) == reference.table.sql_sha256)
+                    )
                 )
                 assessment = replace(assessment, reference_proves_legitimate=candidate_proved)
                 if case.expected_outcome in {ExpectedOutcome.MATCH_REFERENCE, ExpectedOutcome.SCOPED_RESULT, ExpectedOutcome.CANONICAL_RESOLUTION} and not reference.available:

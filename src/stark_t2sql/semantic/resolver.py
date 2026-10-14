@@ -49,17 +49,33 @@ def _clarification(
     )
 
 
-def _finish(
+def _finish_term(
+    targets: frozenset[str], visible: SemanticCatalog
+) -> VocabularyResolution:
+    visible_ids = set(visible.entities) | set(visible.metrics)
+    if len(targets) != 1 or not targets <= visible_ids:
+        return _clarification(set(targets), visible)
+    return VocabularyResolution(
+        status=ResolutionStatus.RESOLVED,
+        concept_ids=tuple(sorted(targets)),
+        clarification=None,
+    )
+
+
+def _finish_question(
     matched: tuple[frozenset[str], ...], visible: SemanticCatalog
 ) -> VocabularyResolution:
     visible_ids = set(visible.entities) | set(visible.metrics)
-    candidates = set().union(*matched) if matched else set()
-    # Preserve global uncertainty even when only one alternative is permitted.
-    if any(len(targets) != 1 or not targets <= visible_ids for targets in matched):
-        return _clarification(candidates, visible)
+    # Trigger clarification only on genuine multi-target lexical ambiguity (len(targets) > 1).
+    # Unambiguous out-of-entitlement concepts proceed to the model/validator/database layers.
+    ambiguous = [targets for targets in matched if len(targets) > 1]
+    if ambiguous:
+        ambiguous_candidates = set().union(*ambiguous)
+        return _clarification(ambiguous_candidates, visible)
+    resolved_visible = set().union(*(targets for targets in matched if targets <= visible_ids)) if matched else set()
     return VocabularyResolution(
         status=ResolutionStatus.RESOLVED,
-        concept_ids=tuple(sorted(candidates)),
+        concept_ids=tuple(sorted(resolved_visible)),
         clarification=None,
     )
 
@@ -84,7 +100,7 @@ def resolve_term(
     targets = _lexicon(catalog).get(_normalize(term))
     if targets is None:
         return _clarification(set(), visible)
-    return _finish((targets,), visible)
+    return _finish_term(targets, visible)
 
 
 def resolve_question(
@@ -121,4 +137,4 @@ def resolve_question(
             continue
         accepted.append((start, end, label))
     matched = tuple(lexicon[label] for _, _, label in sorted(accepted))
-    return _finish(matched, visible)
+    return _finish_question(matched, visible)

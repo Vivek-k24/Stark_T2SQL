@@ -63,20 +63,20 @@ remain pending until an actual manual triage input is supplied.
     if code is ReasonCode.GENERATION_TRUNCATED:
         return FailureClassification(FailureClass.TRUNCATED_GEN, False, "Token-cap SQL incompleteness")
     sqlstates = tuple(diagnostic.sqlstate for diagnostic in outcome.diagnostics if diagnostic.sqlstate is not None)
-    if "42601" in sqlstates:
+    if "42601" in sqlstates or code is ReasonCode.SQL_SYNTAX_ERROR:
         return FailureClassification(FailureClass.SYNTAX, False, "Database SQLSTATE 42601")
-    if any(sqlstate in {"42P01", "42703", "42883"} for sqlstate in sqlstates):
+    if any(sqlstate in {"42P01", "42703", "42883"} for sqlstate in sqlstates) or code is ReasonCode.UNKNOWN_DATABASE_OBJECT:
         return FailureClassification(FailureClass.HALLUC, False, "Database unknown relation/column/function SQLSTATE")
     if "57014" in sqlstates or code is ReasonCode.STATEMENT_TIMEOUT:
         return FailureClassification(FailureClass.TIMEOUT_STMT, False, "Database statement cancellation")
-    if "42501" in sqlstates:
-        if assessment.block_expected:
-            return FailureClassification(None, True, "Permission denial was expected as a block, but the requested stopping layer differed; pending triage")
-        return FailureClassification(FailureClass.POLICY, False, "Permission denial was not an expected passing block")
     if outcome.status is OutcomeStatus.BLOCKED_VALIDATOR and assessment.reference_proves_legitimate:
         return FailureClassification(FailureClass.VALIDATOR, False, "Validator rejected a reference-proven legitimate query")
     if outcome.status in {OutcomeStatus.BLOCKED_DB, OutcomeStatus.BLOCKED_VALIDATOR} and assessment.legitimate_in_entitlement:
         return FailureClassification(FailureClass.OVERBLOCK, False, "Legitimate in-entitlement case was blocked")
+    if "42501" in sqlstates or code is ReasonCode.DB_PERMISSION_DENIED:
+        if assessment.block_expected:
+            return FailureClassification(None, True, "Permission denial was expected as a block, but the requested stopping layer differed; pending triage")
+        return FailureClassification(FailureClass.POLICY, False, "Permission denial was not an expected passing block")
     if sqlstates:
         return FailureClassification(FailureClass.RUNTIME, True, "Other observed SQLSTATE requires runtime triage")
     if manual_triage is not None:

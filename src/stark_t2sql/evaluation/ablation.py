@@ -136,9 +136,10 @@ class AblationHarness:
         if components is None:
             raise HarnessSafetyStopError("The isolated warmup capability is unavailable.")
         request = InputRequest(runtime.personas.resolve(case.persona), case.question, case.as_of_date, profile.mode)
-        resolution = resolve_question(case.question, runtime.catalog, runtime.matrix, runtime.snapshot, request.persona.business_role)
-        if resolution.status is not ResolutionStatus.RESOLVED:
-            raise ConfigurationError("The selected warmup case requires clarification; use an actual resolved tuning input.")
+        if profile.prompt_version != 1 and runtime.catalog is not None and runtime.snapshot is not None:
+            resolution = resolve_question(case.question, runtime.catalog, runtime.matrix, runtime.snapshot, request.persona.business_role)
+            if resolution.status is not ResolutionStatus.RESOLVED:
+                raise ConfigurationError("The selected warmup case requires clarification; use an actual resolved tuning input.")
         if not _REQUEST_LOCK.acquire(blocking=False):
             raise HarnessSafetyStopError("Another request owns the authoritative process flight guard.")
         receipt = None
@@ -198,7 +199,14 @@ class AblationHarness:
                 extracted_sql=case.sql, regenerated_sql=regenerated, executed_sql=result.executed_sql,
                 timings=replace(result.timings, total_ms=(monotonic() - started) * 1000.0, validation_ms=validation_ms),
                 fingerprints=fingerprints, diagnostics=result.diagnostics,
-                row_scope=RowScopeKind.ALL if profile.mode is ExecutionMode.UNCONTROLLED else runtime.matrix.role(selected.business_role).tables["employees"].row_scope,
+                row_scope=(
+                    RowScopeKind.ALL if profile.mode is ExecutionMode.UNCONTROLLED
+                    else (
+                        runtime.matrix.role(selected.business_role).tables["leave_balances"].row_scope
+                        if "leave_balances" in (result.executed_sql or case.sql or "").lower() and "leave_balances" in runtime.matrix.role(selected.business_role).tables
+                        else runtime.matrix.role(selected.business_role).tables["employees"].row_scope
+                    )
+                ),
             )
         except Exception as exc:
             if isinstance(exc, StarkT2SQLError):

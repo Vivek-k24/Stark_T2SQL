@@ -15,6 +15,7 @@ def grant_statements(
     schema_columns: Mapping[str, tuple[str, ...]],
     *,
     definer_owner: str,
+    baseline_eval_login: str | None = None,
 ) -> tuple[str, ...]:
     """Remove stale table AND column ACLs before granting the exact entitlement.
 
@@ -73,4 +74,8 @@ $stark_column_revokes$;""",
         f"{qualified_name(matrix.schema, 'hr_bp_assignments')} "
         f"TO {quote_identifier(definer_owner)};"
     )
+    if baseline_eval_login is not None:
+        eval_target = quote_identifier(baseline_eval_login)
+        for table in matrix.tables:
+            statements.append(f"GRANT SELECT ON TABLE {qualified_name(matrix.schema, table)} TO {eval_target};")
     return tuple(statements)

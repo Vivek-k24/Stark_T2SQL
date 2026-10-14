@@ -105,7 +105,7 @@ _SHAPES: tuple[NodeShape, ...] = (
     NodeShape("TableAlias", frozenset({"this", "columns"})),
     NodeShape("From", frozenset({"this", "expressions"})),
     NodeShape("Join", frozenset({"this", "on", "using", "kind", "side"}), frozenset({"kind", "side"})),
-    NodeShape("Subquery", frozenset({"this", "alias"})),
+    NodeShape("Subquery", frozenset({"this", "alias", "order", "limit", "offset", "with", "with_"})),
     NodeShape("Alias", frozenset({"this", "alias"})),
     NodeShape("Column", frozenset({"this", "table", "db", "catalog"})),
     NodeShape("Identifier", frozenset({"this", "quoted"}), frozenset({"this", "quoted"})),
@@ -121,7 +121,7 @@ _SHAPES: tuple[NodeShape, ...] = (
     NodeShape("Ordered", frozenset({"this", "desc", "nulls_first"}), frozenset({"desc", "nulls_first"})),
     NodeShape("Limit", frozenset({"expression"})),
     NodeShape("Offset", frozenset({"expression"})),
-    NodeShape("Distinct", frozenset({"expressions", "on"})),
+    NodeShape("Distinct", frozenset({"this", "expressions", "on"})),
     NodeShape("Paren", frozenset({"this"})),
     NodeShape("Tuple", frozenset({"expressions"})),
     NodeShape("And", frozenset({"this", "expression"})),
@@ -306,7 +306,12 @@ class _ASTReview:
             raise _Rejected(ValidationRuleCode.STRUCTURE, "An object name is not a reviewed Identifier node.")
         text = node.args.get("this")
         quoted = node.args.get("quoted", False)
-        if not isinstance(text, str) or _IDENTIFIER.fullmatch(text) is None or type(quoted) is not bool:
+        if not isinstance(text, str) or type(quoted) is not bool:
+            raise _Rejected(ValidationRuleCode.STRUCTURE, "Unsupported identifier representation.")
+        parent_name = type(getattr(node, "parent", None)).__name__
+        if quoted and parent_name == "Alias" and 1 <= len(text) <= 63 and all(ch.isprintable() and ch not in "\x00\r\n" for ch in text):
+            return text
+        if _IDENTIFIER.fullmatch(text) is None:
             raise _Rejected(ValidationRuleCode.STRUCTURE, "Unsupported identifier representation.")
         return text if quoted else text.lower()
 
@@ -351,7 +356,7 @@ class _ASTReview:
             if not relations or any(not self._is(item, "Table") and not self._is(item, "Subquery") for item in relations):
                 raise _Rejected(ValidationRuleCode.TABLE_FUNCTION, "FROM/JOIN admits only physical/CTE tables and SELECT subqueries.")
         if name == "Join":
-            if args.get("kind") not in {None, "", "INNER", "CROSS"} or args.get("side") not in {None, "", "LEFT", "RIGHT", "FULL"}:
+            if args.get("kind") not in {None, "", "INNER", "OUTER", "CROSS"} or args.get("side") not in {None, "", "LEFT", "RIGHT", "FULL"}:
                 raise _Rejected(ValidationRuleCode.STRUCTURE, "Unreviewed JOIN kind or side.")
         if name == "Identifier":
             self._identifier(node)
@@ -657,7 +662,7 @@ class HarnessSafetyReviewer:
             _require_hash(fixture_dump_fingerprint, "Actual fixture dump fingerprint")
             if not isinstance(clone_token, str) or not clone_token.strip():
                 raise _Rejected(ValidationRuleCode.POLICY_BINDING, "An audited disposable clone token is required.")
-            decision = self._validator._decision(candidate_sql, persona=persona, policy_fingerprint=policy_fingerprint, allow_all_fixture_tables=mode is ExecutionMode.UNCONTROLLED)
+            decision = self._validator._decision(candidate_sql, persona=persona, policy_fingerprint=policy_fingerprint, allow_all_fixture_tables=mode in {ExecutionMode.UNCONTROLLED, ExecutionMode.NO_VALIDATOR})
             if not decision.accepted or decision.regenerated_sql is None:
                 raise _Rejected(decision.rule_code, decision.internal_detail)
             return HarnessSelectReview(

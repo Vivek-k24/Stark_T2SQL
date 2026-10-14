@@ -72,7 +72,7 @@ def _using_expression(matrix: PolicyMatrix, table: str, scope: RowScopeKind) -> 
     raise ConfigurationError(f"Unsupported RLS row scope for table {table}.")
 
 
-def rls_statements(matrix: PolicyMatrix) -> tuple[str, ...]:
+def rls_statements(matrix: PolicyMatrix, *, baseline_eval_login: str | None = None) -> tuple[str, ...]:
     tables = ", ".join(quote_literal(table) for table in matrix.rls_tables)
     statements = [
         # A stale permissive policy can widen scope even after ACLs are repaired.
@@ -106,5 +106,11 @@ $stark_remove_policies$;""",
             statements.append(
                 f"CREATE POLICY {policy_name} ON {target} AS PERMISSIVE "
                 f"FOR SELECT TO {quote_identifier(role.name)} USING ({using});"
+            )
+        if baseline_eval_login is not None:
+            eval_policy = quote_identifier(f"stark_select_{baseline_eval_login}")
+            statements.append(
+                f"CREATE POLICY {eval_policy} ON {target} AS PERMISSIVE "
+                f"FOR SELECT TO {quote_identifier(baseline_eval_login)} USING (true);"
             )
     return tuple(statements)

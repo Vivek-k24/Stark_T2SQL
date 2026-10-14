@@ -9,7 +9,9 @@ does not resolve questions, assemble prompts, or communicate with services.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 import json
+from ..semantic.metrics import _bind_date
 
 from ..db.catalog import SchemaSnapshot
 from ..errors import ConfigurationError
@@ -37,7 +39,7 @@ def _columns(references: tuple[ColumnRef, ...]) -> list[dict[str, str]]:
     return [_column(reference) for reference in sorted(references, key=lambda ref: (ref.table, ref.column))]
 
 
-def serialize_semantics(catalog: SemanticCatalog) -> str:
+def serialize_semantics(catalog: SemanticCatalog, *, as_of_date: date | None = None) -> str:
     """Serialize an already-governed projection; never include removed aliases.
 
     Stable mapping keys, definition IDs, aliases, source columns, relationships
@@ -55,19 +57,19 @@ def serialize_semantics(catalog: SemanticCatalog) -> str:
             "source_tables": sorted(entity.source_tables),
             "source_columns": _columns(entity.source_columns),
             "relationship_ids": sorted(entity.relationship_ids),
-            "filters": list(entity.filters),
+            "filters": [_bind_date(f, as_of_date) if as_of_date is not None else f for f in entity.filters],
             "temporal_rule_ids": sorted(entity.temporal_rule_ids),
         })
     metrics = []
     for identifier, metric in sorted(catalog.metrics.items()):
         metrics.append({
             "id": identifier, "name": metric.name, "description": metric.description,
-            "aliases": sorted(metric.aliases), "expression": metric.expression,
+            "aliases": sorted(metric.aliases), "expression": _bind_date(metric.expression, as_of_date) if as_of_date is not None else metric.expression,
             "grain": [_column(reference) for reference in metric.grain],
             "source_tables": sorted(metric.source_tables),
             "source_columns": _columns(metric.source_columns),
             "relationship_ids": sorted(metric.relationship_ids),
-            "filters": list(metric.filters), "aggregation": metric.aggregation,
+            "filters": [_bind_date(f, as_of_date) if as_of_date is not None else f for f in metric.filters], "aggregation": metric.aggregation,
             "null_handling": metric.null_handling, "units": metric.units,
             "temporal_rule_ids": sorted(metric.temporal_rule_ids),
             "dependencies": sorted(metric.dependencies),
@@ -81,7 +83,7 @@ def serialize_semantics(catalog: SemanticCatalog) -> str:
         {"id": identifier, "description": rule.description,
          "source_tables": sorted(rule.source_tables),
          "source_columns": _columns(rule.source_columns),
-         "predicate": rule.predicate, "selection": rule.selection}
+         "predicate": _bind_date(rule.predicate, as_of_date) if as_of_date is not None else rule.predicate, "selection": _bind_date(rule.selection, as_of_date) if as_of_date is not None else rule.selection}
         for identifier, rule in sorted(catalog.temporal_rules.items())
     ]
     ambiguities = [
@@ -99,6 +101,7 @@ def serialize_semantics(catalog: SemanticCatalog) -> str:
 def compile_semantics(
     catalog: SemanticCatalog, matrix: PolicyMatrix,
     snapshot: SchemaSnapshot, business_role: str,
+    *, as_of_date: date | None = None,
 ) -> FilteredSemantic:
     """Independently project and hash permissible semantic metadata.
 
@@ -107,16 +110,16 @@ def compile_semantics(
     schema/policy drift validation and must not be mistaken for that input.
     """
     projected = filter_catalog_for_role(catalog, matrix, snapshot, business_role)
-    text = serialize_semantics(projected)
+    text = serialize_semantics(projected, as_of_date=as_of_date)
     return FilteredSemantic(projected, text, sha256_context(text), catalog.sha256, matrix.sha256, business_role)
 
 
-def compile_full_semantics(catalog: SemanticCatalog, matrix: PolicyMatrix) -> FilteredSemantic:
+def compile_full_semantics(catalog: SemanticCatalog, matrix: PolicyMatrix, *, as_of_date: date | None = None) -> FilteredSemantic:
     """Unfiltered semantic text for the separately authorized context ablation.
 
     The harness builder must first require catalog/schema contract validation
     and consume its clone-bound capability. Normal persona context never calls
     this pure serializer; it grants no authority itself.
     """
-    text = serialize_semantics(catalog)
+    text = serialize_semantics(catalog, as_of_date=as_of_date)
     return FilteredSemantic(catalog, text, sha256_context(text), catalog.sha256, matrix.sha256, None)

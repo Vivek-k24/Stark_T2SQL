@@ -202,8 +202,18 @@ def _relation_privileges(cursor: Any, matrix: PolicyMatrix, role_name: str, *, b
             permitted = set(columns) if access.columns is None else set(access.columns)
             if not permitted.issubset(columns):
                 raise ConfigurationError("The matrix references unavailable physical columns.")
-        if table_select and permitted != set(columns):
+        if not permitted and table_select:
             raise ConfigurationError("A table-level SELECT privilege overrides a column restriction.")
+        if table_select and permitted != set(columns):
+            has_table_level_acl = _one(
+                cursor,
+                "SELECT EXISTS (SELECT 1 FROM pg_catalog.aclexplode((SELECT relacl FROM pg_catalog.pg_class WHERE oid = %s)) AS acl "
+                "JOIN pg_catalog.pg_roles AS r ON r.oid = acl.grantee "
+                "WHERE r.rolname = %s AND acl.privilege_type = 'SELECT')",
+                (oid, role_name),
+            )[0]
+            if has_table_level_acl:
+                raise ConfigurationError("A table-level SELECT privilege overrides a column restriction.")
         for column in columns:
             observed = _one(cursor, "SELECT pg_catalog.has_column_privilege(%s, %s, %s, 'SELECT')", (role_name, oid, column))[0]
             if observed != (column in permitted):
@@ -264,7 +274,7 @@ def _audit(connection: Any, config: AppConfig, matrix: PolicyMatrix, credentials
     """No model text reaches this fixed introspection path."""
     connection.readonly = True
     with connection.cursor() as cursor:
-        session_user, current_user, database, address, port = _one(cursor, "SELECT session_user, current_user, pg_catalog.current_database(), pg_catalog.inet_server_addr()::text, pg_catalog.inet_server_port()")
+        session_user, current_user, database, address, port = _one(cursor, "SELECT session_user, current_user, pg_catalog.current_database(), pg_catalog.host(pg_catalog.inet_server_addr()), pg_catalog.inet_server_port()")
         if session_user != credentials.login_role or current_user != session_user or database != credentials.database:
             raise ConfigurationError("Candidate connection did not authenticate as its declared login/database.")
         if address is None or require_loopback_host(address) != credentials.host or port != credentials.port:
