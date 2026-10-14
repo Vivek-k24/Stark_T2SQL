@@ -17,6 +17,8 @@ from ..contracts import OutcomeStatus, Persona, ReasonCode, RowScopeKind, SafeRe
 from .ui_state import clear_answer, current_answer, request_guard, retain_answer
 
 if TYPE_CHECKING:
+    from streamlit.delta_generator import DeltaGenerator
+
     from ..pipeline.response import SafeConcept, SafePolicyRow
 
 
@@ -86,7 +88,12 @@ _LOCAL_CSS = """
 """
 
 
-def render_shell() -> str:
+def render_shell() -> tuple[str, DeltaGenerator]:
+    """Render sidebar once and reserve the persona selector above footer notes.
+
+    Streamlit containers are positional anchors: connected runtime loading can
+    happen later without forcing a persona widget into the sidebar footer.
+    """
     import streamlit as st
 
     st.markdown(_LOCAL_CSS, unsafe_allow_html=True)
@@ -97,9 +104,10 @@ def render_shell() -> str:
         st.caption("CONNECTED WORKSPACE")
         selected = st.radio("Navigation", NAVIGATION, key="stark_navigation")
         st.divider()
+        persona_slot = st.container()
         st.caption("Persona identity is simulated. This application does not provide authentication.")
         st.caption("FULL is the only connected request mode.")
-    return selected
+    return selected, persona_slot
 
 
 def render_page_heading(title: str, description: str) -> None:
@@ -111,7 +119,9 @@ def render_page_heading(title: str, description: str) -> None:
     st.divider()
 
 
-def render_persona_selector(application: PersonaViewApplication) -> Persona | None:
+def render_persona_selector(
+    application: PersonaViewApplication, *, persona_slot: DeltaGenerator,
+) -> Persona | None:
     import streamlit as st
 
     # Names are the only widget values; fixture-resolved Persona objects stay
@@ -121,7 +131,7 @@ def render_persona_selector(application: PersonaViewApplication) -> Persona | No
     if len(personas) != 4 or len(set(names)) != 4:
         st.warning(SERVICE_UNAVAILABLE)
         return None
-    with st.sidebar:
+    with persona_slot:
         selected_name = st.selectbox("Simulated persona", names, key="stark_persona_name")
     return next(persona for persona in personas if persona.display_name == selected_name)
 
@@ -131,6 +141,9 @@ def render_processing() -> None:
 
     st.info("Processing a question. Only one request can run at a time.")
     st.button("Ask", disabled=True, key="stark_busy_ask")
+    # Provides a user-initiated rerun even if an earlier script's pending
+    # result never triggered a UI refresh; it does not bypass the global lock.
+    st.button("Refresh status", key="stark_refresh_busy_status")
 
 
 def render_safe_response(response: SafeResponse) -> None:
