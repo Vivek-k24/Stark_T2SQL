@@ -1,16 +1,17 @@
-# Codex work log — STARK T2SQL R01 (ISS-14)
+# Codex work log — STARK T2SQL R01 and R02
 
-This log records the R01 implementation chronologically, including the initial
-code fixes, official template restoration, documentation and approved-contract
-follow-up. Dates below are from Git history; commit times use America/Chicago
-(`UTC-05:00` on 2026-10-14). Test results are attributed to their respective
-implementation stages. The current acceptance results appear in section 8.
+This log records the R01 implementation and the subsequent authorized R02 work
+chronologically. Dates below are from Git history; commit times use
+America/Chicago (`UTC-05:00` on 2026-10-14). Test results are attributed to their
+respective implementation stages. Section 8 records the end of R01
+implementation; section 9 records R02 and its remaining verification gate.
 
 | Reference | Location |
 | --- | --- |
 | Repository | [Vivek-k24/Stark_T2SQL](https://github.com/Vivek-k24/Stark_T2SQL) |
 | Assigned issue | [Issue #3 — R01: Authoritative SQLCoder template and runtime bootstrap](https://github.com/Vivek-k24/Stark_T2SQL/issues/3) |
-| Implementation review | [Draft PR #12](https://github.com/Vivek-k24/Stark_T2SQL/pull/12) |
+| R01 implementation review | [PR #12](https://github.com/Vivek-k24/Stark_T2SQL/pull/12), subsequently merged into the R02 baseline |
+| R02 assigned issue | [Issue #4 — R02: Deterministic Faker fixture and provenance](https://github.com/Vivek-k24/Stark_T2SQL/issues/4) |
 | Completed design review | [Antigravity_Design_Review.md](Antigravity_Design_Review.md) |
 | Requirements | [STARK_T2SQL FRD 1.8.txt](<STARK_T2SQL FRD 1.8.txt>) |
 | Implementation handoff | [STARK_CODEX_PROMPT_R01.md](STARK_MULTI_AGENT_HANDOFF/STARK_CODEX_PROMPT_R01.md) |
@@ -336,10 +337,246 @@ These are Codex's actual new runs, not merely the reviewer's reported counts.
 No live model or PostgreSQL integration was performed, no service was launched,
 and no R02 work was started.
 
-### Current R01 status
+### R01 status at the end of this implementation stage
 
 **R01 implementation and focused acceptance are complete; the prefix blocker
 is cleared. [PR #12](https://github.com/Vivek-k24/Stark_T2SQL/pull/12) is ready for
 coordinator/human merge review.** The PR remains a draft against
 `gemini/full-remediation-review`; no merge, issue closure or R02 authorization
 is implied. Only `codex/r01-remediation` is used for this follow-up.
+
+## 9. R02 implementation: deterministic fixture and isolated reset
+
+### Authorization, references and branch setup — 2026-10-14
+
+The owner explicitly approved R02 implementation based on the supplied
+`Antigravity_R02_Design_Review.md`. Its baseline verdict was **REVISE**: retain
+the conformant twelve-table `schema.sql`, replace the external-configuration
+deadlock in normal fixture generation, implement the CLI/reset/export paths,
+and supply deterministic artifacts and tests. The owner added two controlling
+requirements: destructive reset must target a verified isolated test database
+and never unrelated tables; historical fidelity and live PostgreSQL acceptance
+must not be claimed without actual verification.
+
+Codex read that review, [Issue #4](https://github.com/Vivek-k24/Stark_T2SQL/issues/4),
+the relevant FRD requirements, existing generator/checks, frozen schema and
+database/persona contracts. The supplied review was an untracked file in
+`H:\STARK T2SQL`; `Antigravity_Design_Review.md` also had reviewer changes there.
+Both reviewer files were preserved without editing or staging them.
+
+Git history established that R01 PR #12 had subsequently been merged by the
+coordinator into `gemini/full-remediation-review` at
+[`51058398182e65a234f5e7da2b27a4ce763436ec`](https://github.com/Vivek-k24/Stark_T2SQL/commit/51058398182e65a234f5e7da2b27a4ce763436ec).
+That later merge supersedes the historical draft status recorded in section 8;
+Codex did not perform that merge during R02.
+
+After fetching the latest integration branch, Codex created
+`codex/r02-remediation` from that commit in the separate worktree
+`H:\STARK_T2SQL_R02`. This kept the original review checkout on
+`antigravity/r02-review` and preserved its uncommitted review material. No R01
+branch was reused for R02 and no integration/main branch was pushed directly.
+
+### Initial problems and resulting implementation
+
+Normal generation previously required an unavailable, extensive external JSON
+configuration. The loader refused populated tables, there was no executable
+CLI, exporters were absent, and an existing test expressly prohibited them.
+The new default is a **new R02 synthetic baseline**, authorized by the design
+review. It is not a reconstruction of an unavailable historical dataset.
+
+`seed_data.py` now builds its default configuration with a private
+`Faker("en_US")` instance seeded with 42 and a private `random.Random(42)`.
+Instance seeding avoids changing Faker's process-global random state. Seed 42
+and as-of date `2026-10-12` are enforced. Faker's documentation limits
+repeatability to the same Faker version; the manifest records the exact
+version used for this export ([Faker seeding documentation](https://faker.readthedocs.io/en/master/#seeding-the-generator)).
+The legacy explicit-configuration loader and its historical-schema binding
+checks remain available; the new default supplies no historical binding.
+
+The generated baseline contains ten divisions including Sales and Engineering,
+37 departments, seven locations, twenty positions, and 500 synthetic employees
+numbered `S00001` through `S00500`. Exactly 435 are active at the fixture date;
+the remaining 65 include terminated employees, future hires and cancelled
+pre-hires. The manager graph is acyclic, an active Sales manager has reports,
+and anchors 326, 47, 361 and 364 are active. Employee emails use the reserved
+`starkcorp.example.com` domain. Compensation ranges, regular biweekly payroll,
+off-cycle corrections, earning/deduction detail, leave snapshots and HR scopes
+are generated and checked.
+
+All **18 previously authored operational checks** are retained, with their
+`DRAFT-FIXTURE-01` through `DRAFT-FIXTURE-18` IDs. Those checks are not described
+as the recovered original historical invariant list. The manifest records their
+actual offline results and computes planted-fact observations from generated
+rows rather than merely repeating configured targets.
+
+The CLI defaults to in-memory generation and checks, with no database connection
+or output files. It exposes `--dry-run`, `--reset`, `--database-name`,
+`--isolation-proof`, `--export-dump` and `--export-manifest`. Reset requires an
+explicit opt-in and proof. Export writes deterministic, primary-key-sorted SQL
+INSERT statements and a JSON manifest using LF bytes and atomic file
+replacement. Output names are restricted to the dedicated fixture artifact
+names, preventing these exporters from overwriting `schema.sql` or other
+source files. The manifest exporter refuses a dump that differs from the
+expected regenerated bytes.
+
+### Reset boundary and deliberate safety choices
+
+The review's example `TRUNCATE ... CASCADE` and `setval` sequence were adapted
+to the owner's stronger isolation requirement:
+
+- Require an exact trusted `AdminConnectionSource`, an allowlisted database
+  name, a numeric loopback endpoint, and a separately supplied isolation proof.
+  Proof binds the real database OID, endpoint, port, isolation token and frozen
+  schema hash. No proof or database authorization marker is invented by the
+  generator.
+- Match the proof against the connected database identity and independently
+  provisioned database COMMENT marker. Require the setup role to own the
+  database, connection limit 1, and no other active client connections.
+- Take bounded exclusive locks and inspect the live schema before destructive
+  SQL. Refuse unrelated tables/views/foreign or partitioned relations, unknown
+  column shapes/types/nullability/identity flags, mismatched constraint/key
+  inventory, inheritance, user triggers/rules, custom routines and foreign keys
+  from outside the fixture set.
+- Verify the twelve key sequences individually and their ownership before
+  truncation. Use an explicit list of the twelve `ONLY public.<table>` targets
+  with `CONTINUE IDENTITY RESTRICT`; there is no `CASCADE` path. Restart only
+  the twelve verified sequences with transactional `ALTER SEQUENCE ... RESTART`.
+- Load parameterized rows, restore `SET CONSTRAINTS ALL IMMEDIATE`, read back
+  the inserted data and run all 18 checks plus an exact generated-row comparison
+  before commit. Perform fresh read-only verification after commit. Guard,
+  insert and pre-commit verification failures roll back the transaction.
+
+PostgreSQL documents the scope of `ONLY`/`RESTRICT` and that sequence `RESTART`
+is transactional, unlike `setval`
+([TRUNCATE](https://www.postgresql.org/docs/16/sql-truncate.html),
+[ALTER SEQUENCE](https://www.postgresql.org/docs/16/sql-altersequence.html)).
+These choices explain the departure from the review's example; they are not
+evidence that the SQL was executed against PostgreSQL during this work.
+
+### Files created or modified
+
+| Path | Purpose |
+| --- | --- |
+| `seed_data.py` | Autonomous generation, fact observations, CLI, deterministic exporters and isolated reset/verification boundary; retain legacy explicit-input checks. |
+| `fixture_pg_dump.sql` | New deterministic data-only SQL snapshot with explicit sequence restarts, no owner/ACL statements, schema DDL, truncation or drops. |
+| `fixture_manifest.json` | Exact dump hashes, row counts, planted facts, all 18 check results, generator/schema/configuration provenance and explicit verification limits. |
+| `tests/test_fixture_source.py` | Replace only the two obsolete assertions about absent default configuration and prohibited exporters; retain legacy missing-input/fidelity checks. |
+| `tests/test_seed_generation.py` | Repeatability, all 18 positive and negative checks, lifecycle/personas/facts, actual committed-artifact regeneration/hash checks, CLI safety, mocked reset/rollback guards and opt-in live test. |
+| `.gitattributes` | Enforce LF for dump, manifest and generator; generator LF also stabilizes its recorded source-byte hash across checkouts. |
+| `Codex_work_log.md` | Preserve R01 history and record R02 implementation and evidence. |
+
+`schema.sql`, all `src/` files, prompt resources, policies, semantic/security
+code, the inference client, UI, evaluation code and `pyproject.toml` are
+unchanged. The work is confined to the seven authorized paths above.
+
+### Offline artifact generation and actual observations
+
+The base Python environment lacked Faker; the initial dry run failed on that
+missing dependency. Codex created a separate environment outside the source
+tree at `H:\STARK_T2SQL_R02_ENV`, using Python 3.12.10 with existing site
+packages. Faker 40.43.0 and psycopg2-binary 2.9.13 were installed only there.
+The driver was needed by mocked SQL-composition tests; installing it did not
+connect to a database. No model, PostgreSQL server or application service was
+installed or started.
+
+The actual offline export command, repeated after the final generator change,
+was:
+
+```powershell
+& 'H:\STARK_T2SQL_R02_ENV\Scripts\python.exe' seed_data.py --export-dump fixture_pg_dump.sql --export-manifest fixture_manifest.json
+```
+
+| Table | Observed rows |
+| --- | ---: |
+| divisions | 10 |
+| locations | 7 |
+| departments | 37 |
+| positions | 20 |
+| employees | 500 |
+| employee_compensation | 950 |
+| payroll_runs | 21 |
+| payroll_results | 9,184 |
+| payroll_earnings | 18,364 |
+| payroll_deductions | 18,368 |
+| leave_balances | 2,610 |
+| hr_bp_assignments | 6 |
+
+The observed DR-3 facts are: three negative-net results in `PR-2026-006`;
+zero total 2026 taxes for exactly employees 10, 20, 30 and 40; the sole
+header/detail mismatch in `PR-2026-012` is gross pay plus USD 125.00; approved
+off-cycle `PR-2026-024` has four correction lines; departments 1–7 are the seven
+small compensated departments; open HR scopes are 47 → [1, 2], 361 → [3, 4],
+and fallback 364 → [5, 6]. These were verified from offline rows, not live SQL.
+
+Actual artifact/source SHA-256 values:
+
+| Bytes hashed | SHA-256 |
+| --- | --- |
+| `fixture_pg_dump.sql` (10,082,657 bytes) | `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` |
+| `fixture_manifest.json` | `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` |
+| `seed_data.py` | `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` |
+| Unchanged `schema.sql` | `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` |
+| Generated configuration | `9b3bfdc67e245d79e9dde9d28afdd2af0ad820c87a4f1b26a7ab982130baa312` |
+
+The manifest's `fixture_dump_sha256` and compatibility key `sha256` agree with
+the actual dump bytes and the existing persona digest reader. Tests regenerate
+the full dump byte-for-byte, compare repeat exports of both artifacts, reject
+tampered/CRLF dump input, and verify the committed manifest's generator and
+schema hashes. Reproducing this baseline requires the recorded Faker version;
+other Faker releases are not claimed to produce identical names or bytes.
+
+### Tests executed and results
+
+The first focused run reached 70 passes, 4 failures and 2 skips; all four
+failures were missing psycopg2 imports in the isolated environment. After
+installing that already-declared dependency, the focused suite passed. Further
+guard and artifact tests were added before the final runs below. An earlier
+full run had 325 passes and 178 skips; the final committed-snapshot regression
+test added one passing case. None of these runs established live acceptance.
+
+Final prescribed commands (both with database integration explicitly disabled):
+
+```powershell
+$env:STARK_TEST_ENABLE_DB_INTEGRATION = '0'
+& 'H:\STARK_T2SQL_R02_ENV\Scripts\python.exe' -m pytest tests/test_fixture_source.py tests/test_schema_contracts.py tests/test_seed_generation.py -q -ra
+& 'H:\STARK_T2SQL_R02_ENV\Scripts\python.exe' -m pytest -q -ra
+```
+
+| Final run | Passed | Failed | Skipped | Exit code |
+| --- | ---: | ---: | ---: | ---: |
+| Focused R02 | **84** | **0** | **2** | **0** |
+| Full Python suite | **326** | **0** | **178** | **0** |
+
+The focused skips are the absent `STARK_TEST_SCHEMA_METADATA_PATH` input and
+the explicitly disabled new R02 live reset test. Full-suite skips comprise the
+existing 177 external-review/disabled-integration cases plus that new live
+reset case. Missing review inputs include schema metadata, adversarial scope,
+reference review, parser review and wall-clock review. These are skips, not
+passes or recovered historical evidence. The pre-existing pytest-asyncio
+fixture-loop-scope deprecation warning remains. Final outputs were captured
+outside the repository in the isolated environment directory.
+
+### Remaining verification and stopping gate
+
+No live database was provisioned, connected, reset or populated in this R02
+implementation. The SQL snapshot has not been restored into PostgreSQL. Mocked
+guard/rollback tests and successful offline invariants do not establish live
+PostgreSQL acceptance. A later opt-in run requires an actual independently
+isolated schema clone, database marker/proof and administrative credentials
+(`STARK_R02_ADMIN_USER`, `STARK_R02_DB_NAME`, `STARK_R02_DB_PASSWORD`, optional
+`STARK_R02_DB_PORT`; the integration test additionally uses
+`STARK_R02_ISOLATION_PROOF` and `STARK_TEST_ENABLE_DB_INTEGRATION=1`).
+
+The manifest expressly records `scope: offline_generated_rows`,
+`live_postgresql_verified: false`,
+`historical_dataset_fidelity_verified: false`,
+`historical_schema_fidelity_verified: false`, and
+`original_historical_invariant_list_recovered: false`. The unavailable original
+historical generator/data/invariant list remain unavailable; the new baseline
+does not silently substitute for them.
+
+**R02 source implementation and prescribed offline tests are complete;
+independent Antigravity verification and live acceptance remain pending.**
+The branch is to be handed off as a draft PR against
+`gemini/full-remediation-review`. No merge or R03 work is authorized by this
+implementation handoff.
