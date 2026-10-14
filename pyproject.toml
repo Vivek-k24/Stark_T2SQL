@@ -23,3 +23,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+markers = [
+    "r01_acceptance: requires the actual owner-approved template contract and authoritative local template bytes",
+]
