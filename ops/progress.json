@@ -8,11 +8,14 @@
   "github_base_sha": "3855429425020c3619e24fabc64d45d988828009",
   "interim": {
     "gate": "INT-01",
+    "head_sha": "e01cc61684c951e8157418a1a67e0bae04865097",
     "issue": 15,
     "issue_state": "open",
     "issue_title": "INT-01 | Automated agent handoffs and live UI activation before R04",
     "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/15",
-    "state": "IMPLEMENTATION — AWAITING INDEPENDENT VERIFICATION"
+    "pr": 16,
+    "state": "DRAFT PR — AWAITING INDEPENDENT VERIFICATION",
+    "url": "https://github.com/Vivek-k24/Stark_T2SQL/pull/16"
   },
   "milestones": [
     {

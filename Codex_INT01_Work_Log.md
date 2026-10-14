@@ -3,6 +3,7 @@
 Date: 2026-10-14. Assignment: [owner-approved Issue #15](https://github.com/Vivek-k24/Stark_T2SQL/issues/15).
 Shared branch: `codex/interim-orchestration-ui`. Target: one draft PR into
 `gemini/full-remediation-review`. **No merge or R04 implementation is authorized.**
+Draft PR: [#16 — INT-01: supervised agent handoffs and offline progress UI](https://github.com/Vivek-k24/Stark_T2SQL/pull/16).
 
 ## 1. Baseline and scope
 
@@ -216,9 +217,20 @@ R04 implementation was performed.
 
 ## 7. Publication and stopping point
 
-The implementation/tests/setup/evidence and this single log are being published
-to the existing shared interim branch. Actual commit and draft PR links are
-recorded in the final handoff update after creation. Independent verification
-belongs in **`Antigravity_INT01_Review.md` on this same branch/PR**.
+The implementation/tests/setup/evidence and this single log were committed in
+[`e01cc61684c951e8157418a1a67e0bae04865097`](https://github.com/Vivek-k24/Stark_T2SQL/commit/e01cc61684c951e8157418a1a67e0bae04865097)
+(`Implement INT-01 supervised handoffs and offline progress UI`) and pushed to
+the existing shared interim branch. GitHub's contents API returned the same
+work-log blob SHA as the local Git object.
+
+[Draft PR #16](https://github.com/Vivek-k24/Stark_T2SQL/pull/16) was opened against
+`gemini/full-remediation-review`; GitHub confirmed OPEN, draft, and the correct
+head/base. A publication-only follow-up records that actual PR in this log and
+refreshes the canonical cache/generated HTML from GitHub. It changes no tested
+implementation source. The cache is a fetched snapshot, not a live connection.
+
+Independent verification belongs in **`Antigravity_INT01_Review.md` on this same
+branch/PR**. Real agent handoffs remain blocked and the scheduled trigger is
+not enabled; opening the draft PR did not activate either.
 
 **Stop for Antigravity verification. Do not merge or begin R04.**
