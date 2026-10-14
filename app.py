@@ -44,13 +44,14 @@ def main() -> None:
     initialize_state(st.session_state)
 
     # FR-10.7: short-circuit before navigation, startup, or any pipeline call.
-    # The request guard and canonical pipeline lock additionally protect
-    # concurrent reruns; a warning or session boolean alone is insufficient.
+    # initialize_state() clears only stale flags after the request lock is free.
+    # The request guard and canonical pipeline lock independently prevent
+    # concurrent requests; a warning/session boolean alone is insufficient.
     if session_is_busy(st.session_state):
         render_processing()
         st.stop()
 
-    navigation = render_shell()
+    navigation, persona_slot = render_shell()
     visual_source_available = False
     try:
         require_visual_baseline(PROJECT_ROOT)
@@ -85,7 +86,7 @@ def main() -> None:
         from stark_t2sql.pipeline.orchestrator import load_persona_runtime
 
         application = load_persona_runtime()
-        persona = render_persona_selector(application)
+        persona = render_persona_selector(application, persona_slot=persona_slot)
     except Exception:
         st.title(navigation)
         st.warning(SERVICE_UNAVAILABLE)
