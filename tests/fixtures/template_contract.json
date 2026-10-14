@@ -1,0 +1,9 @@
+{
+  "template_sha256": "67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6",
+  "question_placeholder": "{user_question}",
+  "schema_placeholder": "{table_metadata_string_DDL_statements}",
+  "question_open_tag": "[QUESTION]",
+  "question_close_tag": "[/QUESTION]",
+  "as_of_line_prefix": "As-of date: ",
+  "source_reference": "defog/sqlcoder-7b-2 revision 7e5b6f7981c0aa7d143f6bec6fa26625bdfcbe66"
+}
