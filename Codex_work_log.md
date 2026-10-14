@@ -1,10 +1,10 @@
 # Codex work log — STARK T2SQL R01 (ISS-14)
 
-This log records the R01 implementation chronologically, through implementation
-commit `47d0bc7d2a67261af3d429d9826d7e9b4eb2355e`, followed by this documentation-only
-addition. Dates below are from Git history; commit times use America/Chicago
-(`UTC-05:00` on 2026-10-14). Test results describe the recorded implementation
-runs, not a new run performed while writing this log.
+This log records the R01 implementation chronologically, including the initial
+code fixes, official template restoration, documentation and approved-contract
+follow-up. Dates below are from Git history; commit times use America/Chicago
+(`UTC-05:00` on 2026-10-14). Test results are attributed to their respective
+implementation stages. The current acceptance results appear in section 8.
 
 | Reference | Location |
 | --- | --- |
@@ -168,7 +168,7 @@ No replacement PR, branch change or merge was needed.
 These fingerprints identify the actual upstream source and local template.
 They are not an owner approval or evidence of a live SQLCoder/model run.
 
-## 5. Final recorded tests and their interpretation
+## 5. Recorded tests before final prefix approval
 
 The following commands were executed after the official template addition.
 The pyproject import-path configuration was used; no extra PYTHONPATH setting
@@ -224,21 +224,22 @@ attribute inspection reported `lf` for the template. No live model/llama.cpp or
 PostgreSQL integration was performed. No model weights were downloaded, no
 services were launched, and no fixture or holdout data was materialized.
 
-## 6. Remaining blocker and final R01 status
+## 6. R01 status before final prefix approval
 
-**Independently verifiable R01 implementation: complete. R01 acceptance:
-BLOCKED pending the owner decision below. Draft PR: open for human review.**
+**At this stage, independently verifiable R01 implementation was complete and
+R01 acceptance remained BLOCKED pending the owner decision below. The draft PR
+was open for human review.**
 
-The single remaining R01 approval decision is the **exact canonical
+The single remaining R01 approval decision was the **exact canonical
 as-of-line prefix, including trailing whitespace, and its approval reference**.
-That real decision must be recorded in the template contract using the already
+That real decision needed to be recorded in the template contract using the already
 established source revision/hash. The acceptance helper supports an actual
 contract at `tests/fixtures/template_contract.json`, or a workspace-local path
-provided through `STARK_TEST_TEMPLATE_CONTRACT_PATH`. Neither a prefix nor an
-approval record has been chosen on the owner's behalf.
+provided through `STARK_TEST_TEMPLATE_CONTRACT_PATH`. At this stage, neither a
+prefix nor an approval record had been chosen on the owner's behalf.
 
-Once the real contract is supplied, the two acceptance cases can be rerun to
-obtain actual approved-prefix evidence. That future action has not occurred.
+The next action was to supply the real contract and rerun the two acceptance
+cases for actual approved-prefix evidence. That action had not yet occurred.
 Template file presence and passing unit regressions do not establish service
 readiness, live database behavior or successful R01 promotion.
 
@@ -256,11 +257,89 @@ with head `codex/r01-remediation` and base
 ## 7. Documentation-only follow-up
 
 The owner requested this root-level `Codex_work_log.md` alongside
-`Antigravity_Design_Review.md`. For this follow-up, Codex read Git history,
+`Antigravity_Design_Review.md`. For that follow-up, Codex read Git history,
 Issue #3, draft PR #12 and relevant existing source/review material, then
 created only this file. No implementation/configuration/test files were
 modified, and no tests were rerun for this documentation-only addition.
 
-The two implementation commit identifiers above remain the source-code
-milestones. The separate documentation commit adding this log is identifiable
-in Git history by its sole changed path, `Codex_work_log.md`.
+The separate documentation commit was
+[`88142e534f7e0c07810f93bbc1714bba40a3d1bf`](https://github.com/Vivek-k24/Stark_T2SQL/commit/88142e534f7e0c07810f93bbc1714bba40a3d1bf),
+with purpose `Document chronological R01 implementation work log`. Its sole
+changed path was `Codex_work_log.md`.
+
+## 8. Final review action: approved prefix and acceptance fixture
+
+The owner then asked Codex to review the latest `Antigravity_Design_Review.md`
+and take the necessary action. Its final appended section, **Independent
+Architecture & Security Review: Gate R01 (ISS-14) — Final Prefix Evaluation &
+PR #12 Approval**, gives verdict **APPROVE** and explicitly approves the exact
+canonical prefix `"As-of date: "`.
+
+This latest decision supersedes the earlier intermediate `"as_of_date: "`
+suggestion in the same document. The selected value has a capital `A`, a hyphen,
+lowercase `of date`, a colon and exactly one trailing ASCII space (`U+0020`).
+Codex used this supplied approval; it did not invent a prefix or alter the
+official model-card bytes.
+
+The requested minimal implementation was to add
+[`tests/fixtures/template_contract.json`](tests/fixtures/template_contract.json).
+The fixture contains the seven fields specified in the final review, including
+the approved prefix, existing template SHA-256, exact placeholder/tag names and
+the pinned Defog revision in `source_reference`. The existing acceptance helper
+already supports this default path, so no application or test code changes were
+needed. This work log was updated to retain the earlier blocked results as
+history and record the new outcome.
+
+### Approval source and existing local changes
+
+The review file already contained uncommitted changes when this follow-up
+began. Codex preserved them without editing or staging the review document.
+The approval source is the final appended review section named above, supplied
+locally and explicitly invoked by the owner's request. This revision commits
+the contract fixture and work-log update; it does not silently include another
+author's review-file changes.
+
+### Verification performed by Codex
+
+Codex ran both suites again after adding the reviewed fixture. The process-local
+`STARK_TEST_TEMPLATE_CONTRACT_PATH` override was unset so the tests exercised
+the committed default fixture. Full-suite database integration remained
+explicitly disabled.
+
+Focused command:
+
+```powershell
+[Environment]::SetEnvironmentVariable('STARK_TEST_TEMPLATE_CONTRACT_PATH', $null, 'Process')
+python -m pytest tests/test_inference_contracts.py tests/test_prompt_template_exact.py -q
+```
+
+Full-suite command:
+
+```powershell
+[Environment]::SetEnvironmentVariable('STARK_TEST_TEMPLATE_CONTRACT_PATH', $null, 'Process')
+$env:STARK_TEST_ENABLE_DB_INTEGRATION = '0'
+python -m pytest -q -ra
+```
+
+| Run | Passed | Failed | BLOCKED | Skipped | Exit code |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Focused R01 | **72** | **0** | **0** | **0** | **0** |
+| Full Python suite | **260** | **0** | **0** | **177** | **0** |
+
+Both previously blocked acceptance tests now pass with the approved prefix.
+The template's 306-byte size and recorded SHA-256 remain unchanged. The 177
+skips retain the external-input and disabled-database reasons described above;
+they do not establish live model, database or later-gate readiness. The existing
+pytest-asyncio deprecation warning also remains.
+
+These are Codex's actual new runs, not merely the reviewer's reported counts.
+No live model or PostgreSQL integration was performed, no service was launched,
+and no R02 work was started.
+
+### Current R01 status
+
+**R01 implementation and focused acceptance are complete; the prefix blocker
+is cleared. [PR #12](https://github.com/Vivek-k24/Stark_T2SQL/pull/12) is ready for
+coordinator/human merge review.** The PR remains a draft against
+`gemini/full-remediation-review`; no merge, issue closure or R02 authorization
+is implied. Only `codex/r01-remediation` is used for this follow-up.
