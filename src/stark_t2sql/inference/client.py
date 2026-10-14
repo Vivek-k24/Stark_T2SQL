@@ -138,14 +138,19 @@ def _attach_generation_details(
 
 
 def _interrupt_socket(connection: HTTPConnection) -> None:
-    """Best-effort cleanup of a blocked future local request, without a new call."""
-    current_socket = connection.sock
+    """Interrupt a blocked request without mutating HTTPConnection from another thread.
+
+    HTTPConnection.close() sets connection.sock to None. Performing that call in
+    the watchdog can race with a foreground send/getresponse() and cause an
+    AttributeError. Only shut down the captured socket; the request thread owns
+    HTTPConnection.close() in its finally block.
+    """
+    current_socket = getattr(connection, "sock", None)
     if current_socket is not None:
         try:
             current_socket.shutdown(socket.SHUT_RDWR)
         except OSError:
             pass
-    connection.close()
 
 
 def _deadline_guard(
@@ -165,6 +170,79 @@ def _deadline_guard(
         done.wait(min(0.05, remaining))
 
 
+def _completion_termination(payload: dict[str, object], max_tokens: int) -> tuple[bool, bool, str, int]:
+    """Normalize native llama.cpp completion metadata without inventing a stop reason.
+
+    Older releases report stopped_word/stopped_eos/stopped_limit. Modern releases
+    may supply stop_type and stopping_word when response_fields requests them.
+    Some local builds return only stop and tokens_predicted: stop=True proves
+    termination, but does NOT mean that the semicolon stopping word was seen.
+
+    An ambiguous completion exactly at the token cap is conservatively treated
+    as truncated, unless a native word-stop explicitly proves semicolon stop.
+    A SQL AST validator must still review every candidate after extraction.
+    """
+    tokens = payload.get("tokens_predicted")
+    if type(tokens) is not int or not 0 <= tokens <= max_tokens:
+        raise ModelGenerationError("Native predicted-token metadata is missing or outside the request limit.")
+    if "truncated" in payload:
+        if type(payload["truncated"]) is not bool:
+            raise ModelGenerationError("Native prompt truncation metadata is malformed.")
+        if payload["truncated"]:
+            raise ModelGenerationError("The model truncated its supplied prompt context.")
+    if "stop" in payload and type(payload["stop"]) is not bool:
+        raise ModelGenerationError("Native completion terminal flag is malformed.")
+    terminal_flag = payload.get("stop")
+    stop_type = payload.get("stop_type")
+    legacy_keys = ("stopped_word", "stopped_eos", "stopped_limit")
+    has_legacy = any(key in payload for key in legacy_keys)
+    if stop_type is not None:
+        if type(stop_type) is not str or stop_type not in {"word", "eos", "limit", "none"}:
+            raise ModelGenerationError("Native stop_type is unsupported.")
+        if stop_type == "none" or terminal_flag is False:
+            raise ModelGenerationError("The unstreamed completion did not report a terminal state.")
+        if has_legacy:
+            if any(type(payload.get(key)) is not bool for key in legacy_keys):
+                raise ModelGenerationError("Conflicting or partial native completion metadata.")
+            expected = {
+                "word": (True, False, False),
+                "eos": (False, True, False),
+                "limit": (False, False, True),
+            }[stop_type]
+            if tuple(payload[key] for key in legacy_keys) != expected:
+                raise ModelGenerationError("Native completion stop metadata conflicts.")
+        if stop_type == "word":
+            if payload.get("stopping_word") != ";":
+                raise ModelGenerationError("The service reported an unapproved stopping word.")
+            return False, True, "SEMICOLON_STOP", tokens
+        if payload.get("stopping_word") not in (None, ""):
+            raise ModelGenerationError("A stopping word was reported without a word stop.")
+        return (
+            stop_type == "limit", False,
+            "TOKEN_LIMIT" if stop_type == "limit" else "EOS", tokens,
+        )
+    if has_legacy:
+        if any(type(payload.get(key)) is not bool for key in legacy_keys):
+            raise ModelGenerationError("Partial native legacy completion metadata.")
+        word, eos, limit = (payload[key] for key in legacy_keys)
+        if sum((word, eos, limit)) != 1 or terminal_flag is False:
+            raise ModelGenerationError("Native legacy completion states conflict or are not terminal.")
+        if word:
+            if payload.get("stopping_word") != ";":
+                raise ModelGenerationError("The service reported an unapproved stopping word.")
+            return False, True, "SEMICOLON_STOP", tokens
+        if payload.get("stopping_word") not in (None, ""):
+            raise ModelGenerationError("A stopping word was reported without a word stop.")
+        return limit, False, "TOKEN_LIMIT" if limit else "EOS", tokens
+    if terminal_flag is True:
+        # A compact response cannot distinguish EOS from a stop word. Never
+        # claim that it specifically stopped on ';' or completed at the cap.
+        if tokens >= max_tokens:
+            return True, False, "TOKEN_LIMIT", tokens
+        return False, False, "STOP_REASON_UNSPECIFIED", tokens
+    raise ModelGenerationError("Native generation termination metadata is unavailable.")
+
+
 class LocalInferenceClient:
     """One-flight, bounded /completion requests through http.client.
 
@@ -177,14 +255,12 @@ class LocalInferenceClient:
     def __init__(self, config: AppConfig, *, service: LocalModelServiceContract) -> None:
         if type(config) is not AppConfig or type(service) is not LocalModelServiceContract:
             raise ConfigurationError("Local inference requires typed application and service declarations.")
-        if config.limits.generation_timeout_seconds != 120.0:
-            raise ConfigurationError("A changed generation timeout needs a separately documented measured baseline.")
         canonical = require_allowed_url(
             config.llama_cpp_url, allowed_endpoints=config.allowed_runtime_endpoints,
         )
         parsed = urlsplit(canonical)
-        if parsed.scheme != "http" or parsed.hostname != "127.0.0.1":
-            raise ConfigurationError("The FR-4 llama.cpp service must use explicit HTTP at 127.0.0.1.")
+        if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "::1"}:
+            raise ConfigurationError("The llama.cpp service must use an explicitly allowed numeric loopback address.")
         if parsed.path not in {"", "/"} or parsed.query:
             raise ConfigurationError("The llama.cpp configuration must name the local service root.")
         model_file = require_source_file(config.paths.model_file, label="actual local GGUF model")
@@ -204,14 +280,12 @@ class LocalInferenceClient:
         self._single_flight = Lock()
 
     def generate(self, prompt: BuiltPrompt, *, cancel_event: Event | None = None) -> GenerationResult:
-        """Future local call; total generation duration is bounded by 120 seconds.
+        """Send one bounded native completion using the configured model timeout.
 
-        Native response termination fields are required; ambiguous token-cap
-        metadata fails closed instead of pretending generation completed. Only
-        unstreamed native llama.cpp completion responses are accepted. API field
-        compatibility still requires later actual build review, never a probe in
-        this source assignment. The watchdog closes a socket on cancellation or
-        total deadline; finally closes resources and releases the flight guard.
+        Accept reviewed legacy/modern response contracts and compact responses,
+        without pretending an unspecified stop reason was a semicolon stop.
+        The watchdog interrupts only the socket; the foreground thread owns
+        HTTPConnection cleanup. No service or SQL is executed on import.
         """
         if type(prompt) is not BuiltPrompt:
             raise ConfigurationError("The model accepts only a built immutable prompt.")
@@ -220,7 +294,7 @@ class LocalInferenceClient:
         if not self._single_flight.acquire(blocking=False):
             raise ModelGenerationError("The local model already has an active request.")
         started = monotonic()
-        deadline = started + self.decoding.timeout_seconds
+        deadline = started + self.config.limits.generation_timeout_seconds
         connection: HTTPConnection | None = None
         response = None
         watcher: Thread | None = None
@@ -247,6 +321,14 @@ class LocalInferenceClient:
                 "seed": self.decoding.seed, "n_predict": self.decoding.max_tokens,
                 "stop": list(self.decoding.stop), "stream": False,
                 "cache_prompt": True, "id_slot": 0,
+                # Current llama.cpp may return compact output by default.
+                # Request explicit stop metadata where supported; absent
+                # optional response fields still require safe normalization.
+                "response_fields": [
+                    "content", "tokens_predicted", "stop", "stop_type",
+                    "stopping_word", "stopped_word", "stopped_eos",
+                    "stopped_limit", "truncated",
+                ],
             }, ensure_ascii=False, allow_nan=False).encode("utf-8")
             connection.request("POST", "/completion", body=body, headers={
                 "Content-Type": "application/json", "Accept": "application/json",
@@ -268,26 +350,13 @@ class LocalInferenceClient:
             if not isinstance(payload, dict) or not isinstance(payload.get("content"), str):
                 raise ModelGenerationError("The local model response has no native completion content.")
             raw_output = payload["content"]
-            if (
-                type(payload.get("stopped_limit")) is not bool
-                or type(payload.get("stopped_word")) is not bool
-                or type(payload.get("stopped_eos")) is not bool
-                or type(payload.get("tokens_predicted")) is not int
-                or payload["tokens_predicted"] < 0
-            ):
-                raise ModelGenerationError("Native generation termination/token metadata is unavailable.")
-            tokens = payload["tokens_predicted"]
-            reached_limit = payload["stopped_limit"] or tokens >= self.decoding.max_tokens
-            stopped_semicolon = payload["stopped_word"] and payload.get("stopping_word") == ";"
-            if payload["stopped_word"] and not stopped_semicolon:
-                raise ModelGenerationError("The service reported a stop outside the frozen semicolon policy.")
-            if not (reached_limit or stopped_semicolon or payload["stopped_eos"]):
-                raise ModelGenerationError("The local model did not report a terminal completion state.")
+            reached_limit, stopped_semicolon, finish, tokens = _completion_termination(
+                payload, self.decoding.max_tokens,
+            )
             if expired.is_set() or monotonic() >= deadline:
                 raise GenerationTimeoutError("The local model exceeded its total generation deadline.")
             if cancelled.is_set() or (cancel_event is not None and cancel_event.is_set()):
                 raise ModelGenerationError("Generation was cancelled; the candidate must not execute.")
-            finish = "TOKEN_LIMIT" if reached_limit else ("SEMICOLON_STOP" if stopped_semicolon else "EOS")
             return GenerationResult(
                 raw_output, (monotonic() - started) * 1000.0,
                 reached_limit, stopped_semicolon, finish, tokens, prompt.scored, response_text,
@@ -300,7 +369,7 @@ class LocalInferenceClient:
         except (TimeoutError, socket.timeout) as exc:
             error = GenerationTimeoutError("The local model generation timed out.")
             raise _attach_generation_details(error, started=started, raw_output=raw_output, raw_response=response_text) from exc
-        except (OSError, HTTPException, UnicodeError, ValueError, TypeError) as exc:
+        except (OSError, HTTPException, UnicodeError, ValueError, TypeError, AttributeError) as exc:
             if expired.is_set() or monotonic() >= deadline:
                 error = GenerationTimeoutError("The local model exceeded its total generation deadline.")
             elif cancelled.is_set():
