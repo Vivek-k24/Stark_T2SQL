@@ -11,6 +11,7 @@ by `AGENTS.md`. R01/R02 history remains in `Codex_work_log.md` unchanged.
 | FRD | [STARK_T2SQL FRD 1.8.txt](<STARK_T2SQL FRD 1.8.txt>) — FR-6.1–6.11, DR-5, sections 6–8 |
 | Shared branch | `codex/r03-remediation` |
 | Integration target | `gemini/full-remediation-review` |
+| Implementation PR | [Draft PR #14](https://github.com/Vivek-k24/Stark_T2SQL/pull/14) |
 
 ## 1. Starting state and objective
 
@@ -249,10 +250,21 @@ fabricated to close these gaps.
 
 ## 6. Publication and stopping gate
 
-Source changes and prescribed offline tests are complete. This record is being
-committed with the implementation on the existing shared branch; the actual
-implementation commit and single draft PR link will be recorded in the handoff
-update after GitHub creates them.
+Codex committed the nine implementation/test/log paths as
+[`1bbd5950494f1dda592127c68bfafea5700652bc`](https://github.com/Vivek-k24/Stark_T2SQL/commit/1bbd5950494f1dda592127c68bfafea5700652bc),
+`Fix R03 baseline login bootstrap and clone-only policy application`, at
+2026-10-14 15:05:13 America/Chicago. The commit was pushed explicitly to
+`origin/codex/r03-remediation`. GitHub's contents API confirmed that the pushed
+work-log blob matched the local committed blob before the PR was created.
+
+Codex opened the single [draft PR #14](https://github.com/Vivek-k24/Stark_T2SQL/pull/14)
+from `codex/r03-remediation` into `gemini/full-remediation-review`. This handoff
+update records the actual commit and PR URL in the same work log/branch/PR; it
+changes no tested source or artifact bytes. No tests are rerun for this
+documentation-only update.
+
+**Source implementation and prescribed offline verification are complete and
+published for independent review. Live acceptance remains pending.**
 
 **Stop for Antigravity's independent implementation verification in the same
 `Antigravity_R03_Review.md`. Do not merge, close the gate as live-accepted, or
