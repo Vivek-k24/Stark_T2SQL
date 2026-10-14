@@ -1,0 +1,258 @@
+# STARK-TTSQL-FRD-1.8 FR-3/FR-7, drafted source definitions only.
+# No seed records, held-out questions, reference queries or numeric answers.
+# Physical names follow the current schema.sql, not a missing historical schema.
+# Definitions require future human review and independent reference evaluation.
+version: "1.0"
+entities:
+  employee:
+    name: Employee
+    kind: entity
+    description: An employee row within the selected persona's visible scope.
+    aliases: [employee, employees, staff, people]
+    source_tables: [employees]
+    source_columns: [employees.employee_id]
+    relationship_ids: []
+    filters: []
+    temporal_rule_ids: []
+  division:
+    name: Division
+    kind: entity
+    description: A division is the parent organizational unit of departments.
+    aliases: [division, divisions]
+    source_tables: [divisions]
+    source_columns: [divisions.division_id, divisions.division_name]
+    relationship_ids: []
+    filters: []
+    temporal_rule_ids: []
+  department:
+    name: Department
+    kind: entity
+    description: A department belongs to one division; it is distinct from that division.
+    aliases: [department, departments]
+    source_tables: [departments, divisions]
+    source_columns: [departments.department_id, departments.department_name, departments.division_id, divisions.division_id]
+    relationship_ids: [department_division]
+    filters: []
+    temporal_rule_ids: []
+  engineering_division:
+    name: Engineering division
+    kind: division_member
+    description: Engineering denotes a division, never a department by default.
+    aliases: [engineering, engineering division]
+    source_tables: [divisions]
+    source_columns: [divisions.division_id, divisions.division_name]
+    relationship_ids: []
+    filters: ["divisions.division_name = 'Engineering'"]
+    temporal_rule_ids: []
+  payroll_run:
+    name: Payroll run
+    kind: entity
+    description: A payroll header; status is a single field distinguishing posted and closed.
+    aliases: [payroll run, payroll runs, pay run, pay runs]
+    source_tables: [payroll_runs]
+    source_columns: [payroll_runs.payroll_run_id, payroll_runs.status]
+    relationship_ids: []
+    filters: []
+    temporal_rule_ids: []
+  payroll_pay_date:
+    name: Payroll payment date
+    kind: date_dimension
+    description: Date of payment, distinct from the end of the earning period.
+    aliases: [pay date, payment date, payroll payment date]
+    source_tables: [payroll_runs]
+    source_columns: [payroll_runs.pay_date]
+    relationship_ids: []
+    filters: []
+    temporal_rule_ids: [pay_date_as_of]
+  payroll_period_end:
+    name: Payroll period end
+    kind: date_dimension
+    description: End of the earning period, distinct from the payment date.
+    aliases: [pay period end, pay period end date, payroll period end]
+    source_tables: [payroll_runs]
+    source_columns: [payroll_runs.pay_period_end]
+    relationship_ids: []
+    filters: []
+    temporal_rule_ids: [period_end_as_of]
+metrics:
+  active_headcount:
+    name: Active headcount
+    description: Distinct visible employees active on the explicit as-of date under FR-7.4.
+    aliases: [active headcount, active employee count, active employees]
+    expression: "COUNT(DISTINCT employees.employee_id)"
+    grain: [employees.employee_id]
+    source_tables: [employees]
+    source_columns: [employees.employee_id, employees.employment_type, employees.status, employees.hire_date, employees.termination_date]
+    relationship_ids: []
+    filters:
+      - "employees.employment_type IN ('full_time', 'part_time')"
+      - "employees.status <> 'cancelled_pre_hire'"
+      - "employees.hire_date <= CAST(:as_of_date AS DATE)"
+      - "(employees.termination_date IS NULL OR employees.termination_date > CAST(:as_of_date AS DATE))"
+    aggregation: count_distinct
+    null_handling: Employee identifiers are required; NULL termination dates denote no recorded termination.
+    units: employees
+    temporal_rule_ids: [employee_active_as_of]
+    allowed_scopes: [all, assigned_divisions]
+    dependencies: []
+    pending_roles: [app_sales_mgr]
+  visible_employee_count:
+    name: Visible employee row count
+    description: Counts distinct employee rows within the selected persona's visible scope.
+    aliases: [visible employee count, visible employee row count, visible rows]
+    expression: "COUNT(DISTINCT employees.employee_id)"
+    grain: [employees.employee_id]
+    source_tables: [employees]
+    source_columns: [employees.employee_id]
+    relationship_ids: []
+    filters: []
+    aggregation: count_distinct
+    null_handling: Employee identifiers are required.
+    units: rows
+    temporal_rule_ids: []
+    allowed_scopes: [all, direct_reports, assigned_divisions]
+    dependencies: []
+    pending_roles: []
+  direct_report_count:
+    name: Direct report row count
+    description: Counts visible direct-report rows under the direct_reports scope.
+    aliases: [direct report count, direct report row count, number of direct reports]
+    expression: "COUNT(DISTINCT employees.employee_id)"
+    grain: [employees.employee_id]
+    source_tables: [employees]
+    source_columns: [employees.employee_id, employees.manager_id]
+    relationship_ids: []
+    filters: []
+    aggregation: count_distinct
+    null_handling: Employee identifiers are required.
+    units: rows
+    temporal_rule_ids: []
+    allowed_scopes: [direct_reports]
+    dependencies: []
+    pending_roles: []
+  posted_closed_payroll_run_count:
+    name: Posted or closed payroll run count
+    description: Distinct runs with status posted or closed, using payment-date-as-of semantics.
+    aliases: [posted payroll run count, completed payroll run count, posted or closed payroll run count]
+    expression: "COUNT(DISTINCT payroll_runs.payroll_run_id)"
+    grain: [payroll_runs.payroll_run_id]
+    source_tables: [payroll_runs]
+    source_columns: [payroll_runs.payroll_run_id, payroll_runs.status, payroll_runs.pay_date]
+    relationship_ids: []
+    filters: ["payroll_runs.status IN ('posted', 'closed')"]
+    aggregation: count_distinct
+    null_handling: Run identifiers, statuses and payment dates are required.
+    units: runs
+    temporal_rule_ids: [pay_date_as_of]
+    allowed_scopes: [all]
+    dependencies: []
+    pending_roles: []
+  bonus_target_percentage:
+    name: Target bonus percentage
+    description: Employee bonus target in percentage points from the effective annual compensation row; no implicit averaging or summation.
+    aliases: [target bonus percentage, bonus target percentage, bonus target, target bonus percent]
+    expression: employee_compensation.bonus_target_pct
+    grain: [employees.employee_id]
+    source_tables: [employees, employee_compensation]
+    source_columns: [employees.employee_id, employee_compensation.employee_id, employee_compensation.bonus_target_pct, employee_compensation.effective_date, employee_compensation.effective_to]
+    relationship_ids: [compensation_employee]
+    filters: []
+    aggregation: none
+    null_handling: Missing compensation has no inferred zero or target percentage.
+    units: percentage_points
+    temporal_rule_ids: [compensation_effective_as_of]
+    allowed_scopes: [all]
+    dependencies: []
+    pending_roles: []
+  annual_base_salary:
+    name: Annual base salary
+    description: Annual USD salary from the effective compensation row; no implicit aggregation across employees or history.
+    aliases: [annual base salary, annual salary, base salary]
+    expression: employee_compensation.base_salary
+    grain: [employees.employee_id]
+    source_tables: [employees, employee_compensation]
+    source_columns: [employees.employee_id, employee_compensation.employee_id, employee_compensation.base_salary, employee_compensation.effective_date, employee_compensation.effective_to]
+    relationship_ids: [compensation_employee]
+    filters: []
+    aggregation: none
+    null_handling: Missing compensation remains absent; NULL is not zero.
+    units: USD_per_year
+    temporal_rule_ids: [compensation_effective_as_of]
+    allowed_scopes: [all]
+    dependencies: []
+    pending_roles: []
+  leave_balance_hours:
+    name: Leave balance hours
+    description: Employee and leave-type balance from the most recent available snapshot on or before the explicit as-of date.
+    aliases: [leave balance hours, leave balance, remaining leave]
+    expression: leave_balances.balance_hours
+    grain: [leave_balances.employee_id, leave_balances.leave_type]
+    source_tables: [leave_balances]
+    source_columns: [leave_balances.employee_id, leave_balances.leave_type, leave_balances.balance_hours, leave_balances.as_of_date]
+    relationship_ids: []
+    filters: []
+    aggregation: none
+    null_handling: Missing snapshots remain absent; negative balances are meaningful.
+    units: hours
+    temporal_rule_ids: [leave_snapshot_as_of]
+    allowed_scopes: [all, via_employees]
+    dependencies: []
+    pending_roles: []
+relationships:
+  employee_department: {source: employees.department_id, target: departments.department_id, cardinality: many_to_one}
+  department_division: {source: departments.division_id, target: divisions.division_id, cardinality: many_to_one}
+  employee_position: {source: employees.position_id, target: positions.position_id, cardinality: many_to_one}
+  employee_location: {source: employees.location_id, target: locations.location_id, cardinality: many_to_one}
+  employee_manager: {source: employees.manager_id, target: employees.employee_id, cardinality: many_to_one}
+  compensation_employee: {source: employee_compensation.employee_id, target: employees.employee_id, cardinality: many_to_one}
+  result_run: {source: payroll_results.payroll_run_id, target: payroll_runs.payroll_run_id, cardinality: many_to_one}
+  result_employee: {source: payroll_results.employee_id, target: employees.employee_id, cardinality: many_to_one}
+  earning_result: {source: payroll_earnings.payroll_result_id, target: payroll_results.payroll_result_id, cardinality: many_to_one}
+  deduction_result: {source: payroll_deductions.payroll_result_id, target: payroll_results.payroll_result_id, cardinality: many_to_one}
+  leave_employee: {source: leave_balances.employee_id, target: employees.employee_id, cardinality: many_to_one}
+  hr_assignment_employee: {source: hr_bp_assignments.employee_id, target: employees.employee_id, cardinality: many_to_one}
+  hr_assignment_division: {source: hr_bp_assignments.division_id, target: divisions.division_id, cardinality: many_to_one}
+temporal_rules:
+  employee_active_as_of:
+    description: Hire date is inclusive; termination date is exclusive; every request supplies as_of_date.
+    source_tables: [employees]
+    source_columns: [employees.hire_date, employees.termination_date]
+    predicate: "employees.hire_date <= CAST(:as_of_date AS DATE) AND (employees.termination_date IS NULL OR employees.termination_date > CAST(:as_of_date AS DATE))"
+    selection: Apply to the employee's current department attribution; no transfer history exists.
+  pay_date_as_of:
+    description: Payment date is the temporal basis for paid payroll.
+    source_tables: [payroll_runs]
+    source_columns: [payroll_runs.pay_date]
+    predicate: "payroll_runs.pay_date <= CAST(:as_of_date AS DATE)"
+    selection: Use pay_date only when the governed question means payment timing.
+  period_end_as_of:
+    description: Earning-period end is a distinct temporal basis from payment timing.
+    source_tables: [payroll_runs]
+    source_columns: [payroll_runs.pay_period_end]
+    predicate: "payroll_runs.pay_period_end <= CAST(:as_of_date AS DATE)"
+    selection: Use pay_period_end only when the governed question means earning-period timing.
+  compensation_effective_as_of:
+    description: Compensation ranges are half-open; a NULL effective_to is open-ended.
+    source_tables: [employee_compensation]
+    source_columns: [employee_compensation.effective_date, employee_compensation.effective_to]
+    predicate: "employee_compensation.effective_date <= CAST(:as_of_date AS DATE) AND (employee_compensation.effective_to IS NULL OR employee_compensation.effective_to > CAST(:as_of_date AS DATE))"
+    selection: Exactly one applicable row per employee is required; closed-range overlaps are a future fixture-invariant dependency.
+  hr_assignment_current:
+    description: Governed HR row scope uses open-ended assignments only, as required by FR-6.7.
+    source_tables: [hr_bp_assignments]
+    source_columns: [hr_bp_assignments.effective_from, hr_bp_assignments.effective_to]
+    predicate: "hr_bp_assignments.effective_to IS NULL"
+    selection: Current HR assignments deliberately use the policy's open-ended rule rather than a retrospective as-of reassignment.
+  leave_snapshot_as_of:
+    description: Select the most recent dated snapshot at or before the explicit date for each employee and leave type.
+    source_tables: [leave_balances]
+    source_columns: [leave_balances.employee_id, leave_balances.leave_type, leave_balances.as_of_date]
+    predicate: "leave_balances.as_of_date <= CAST(:as_of_date AS DATE)"
+    selection: Choose MAX(as_of_date) per employee_id and leave_type among qualifying snapshots before projecting balance_hours; summing history is invalid.
+ambiguities:
+  - {term: headcount, targets: [active_headcount, visible_employee_count]}
+  - {term: payroll date, targets: [payroll_pay_date, payroll_period_end]}
+  - {term: payroll timing, targets: [payroll_pay_date, payroll_period_end]}
+  - {term: organizational unit, targets: [division, department]}
+  - {term: compensation, targets: [annual_base_salary, bonus_target_percentage]}
+  - {term: payroll, targets: [payroll_run, payroll_pay_date, payroll_period_end]}

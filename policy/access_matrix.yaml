@@ -1,0 +1,75 @@
+# STARK-TTSQL-FRD-1.8 section 6: entitlement metadata, not fixture records.
+# This file is the single source of grants, scopes and filtered catalog access.
+# I-01 remains open: sales lacks the columns required for active_headcount.
+version: "1.0"
+schema: public
+tables:
+  - divisions
+  - locations
+  - departments
+  - positions
+  - employees
+  - employee_compensation
+  - payroll_runs
+  - payroll_results
+  - payroll_earnings
+  - payroll_deductions
+  - leave_balances
+  - hr_bp_assignments
+rls_tables:
+  - employees
+  - leave_balances
+roles:
+  app_payroll:
+    login_role: stark_payroll_login
+    tables:
+      divisions: {columns: "*", row_scope: all}
+      locations: {columns: "*", row_scope: all}
+      departments: {columns: "*", row_scope: all}
+      positions: {columns: "*", row_scope: all}
+      employees: {columns: "*", row_scope: all}
+      employee_compensation: {columns: "*", row_scope: all}
+      payroll_runs: {columns: "*", row_scope: all}
+      payroll_results: {columns: "*", row_scope: all}
+      payroll_earnings: {columns: "*", row_scope: all}
+      payroll_deductions: {columns: "*", row_scope: all}
+      leave_balances: {columns: "*", row_scope: all}
+  app_hr_bp:
+    login_role: stark_hr_login
+    tables:
+      divisions: {columns: "*", row_scope: all}
+      locations: {columns: "*", row_scope: all}
+      departments: {columns: "*", row_scope: all}
+      positions: {columns: "*", row_scope: all}
+      employees:
+        columns:
+          - employee_id
+          - first_name
+          - last_name
+          - email
+          - hire_date
+          - termination_date
+          - status
+          - employment_type
+          - department_id
+          - position_id
+          - manager_id
+          - location_id
+          - legal_entity
+        row_scope: assigned_divisions
+      leave_balances: {columns: "*", row_scope: via_employees}
+  app_sales_mgr:
+    login_role: stark_sales_login
+    tables:
+      divisions: {columns: "*", row_scope: all}
+      locations: {columns: "*", row_scope: all}
+      departments: {columns: "*", row_scope: all}
+      positions: {columns: "*", row_scope: all}
+      employees:
+        columns:
+          - employee_id
+          - first_name
+          - last_name
+          - department_id
+          - manager_id
+        row_scope: direct_reports
