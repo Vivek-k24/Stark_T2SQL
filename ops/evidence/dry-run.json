@@ -1,0 +1,12 @@
+{
+  "exercise": "FAKE AGENTS / FAKE GITHUB",
+  "sequence": [
+    "implementation",
+    "verification"
+  ],
+  "repeat_dispatches": 0,
+  "final_state": "VERIFIED \u2014 AWAITING MERGE",
+  "next_gate": "NOT_STARTED",
+  "real_agent_sessions": 0,
+  "real_repository_modified": false
+}

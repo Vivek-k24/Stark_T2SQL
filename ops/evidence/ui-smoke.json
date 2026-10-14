@@ -1,0 +1,13 @@
+{
+  "health_endpoint": "PASSED",
+  "browser": "Microsoft Edge headless",
+  "browser_views": [
+    "Health & Status",
+    "Architecture",
+    "Progress"
+  ],
+  "bind": "127.0.0.1",
+  "connected_sql": "NOT_EXECUTED",
+  "agent_sessions": 0,
+  "server_after_smoke": "STOPPED"
+}

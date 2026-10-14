@@ -1,0 +1,11 @@
+{
+  "observed_at": "2026-10-14T23:13:22.194389+00:00",
+  "mode": "status_only",
+  "setup_check": "PASSED",
+  "actual_github_poll": "STOP_AWAITING_OWNER_MERGE",
+  "integration_ref_unchanged": true,
+  "task_registered": false,
+  "agent_sessions": 0,
+  "github_mutations": 0,
+  "windows_check_only_script": "PASSED"
+}

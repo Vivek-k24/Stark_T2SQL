@@ -33,7 +33,7 @@ class PersonaViewApplication(Protocol):
     def policy_view(self, persona: Persona) -> tuple[SafePolicyRow, ...]: ...
 
 
-NAVIGATION = ("Playground", "Semantic Catalog", "Access Policy", "Architecture", "Progress")
+NAVIGATION = ("Health & Status", "Architecture", "Progress", "Offline demo", "Playground", "Semantic Catalog", "Access Policy")
 SERVICE_UNAVAILABLE = "A required local resource is unavailable. Connected views are paused."
 REQUEST_UNAVAILABLE = "The request could not be completed. Try again when the local services are available."
 
@@ -94,7 +94,7 @@ def render_shell() -> str:
         st.title("stark.")
         st.caption("Text-to-SQL workspace")
         st.divider()
-        st.caption("CONNECTED WORKSPACE")
+        st.caption("LOCAL WORKSPACE · FRD 1.8")
         selected = st.radio("Navigation", NAVIGATION, key="stark_navigation")
         st.divider()
         st.caption("Persona identity is simulated. This application does not provide authentication.")

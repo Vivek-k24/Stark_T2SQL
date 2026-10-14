@@ -1,0 +1,11 @@
+{
+  "observed_at": "2026-10-14T23:03:04.862789+00:00",
+  "sandbox": "read-only",
+  "approval_policy": "on-request",
+  "scope": "fixed public token; no repository/HR inputs",
+  "state": "PASSED",
+  "workspace_write_smoke": "NOT_RUN",
+  "version": "codex-cli 0.162.0-alpha.17.2",
+  "tool_calls": 0,
+  "headless_authenticated": true
+}
