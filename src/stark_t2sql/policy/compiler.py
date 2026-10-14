@@ -34,6 +34,10 @@ class CompileSettings:
     measurement_provenance identifies it. Supplying fields is not proof of
     measurement quality. The future administrative path owns review of inputs.
     Initial statement timeout comes from FR-6.2, not a guessed resource budget.
+
+    Production MUST leave baseline_eval_login=None. Only an isolated evaluation
+    clone may supply a dedicated baseline login; policy_apply verifies its live
+    clone marker before installing the resulting permissive SELECT policies.
     """
 
     definer_owner: str
@@ -129,7 +133,8 @@ def compile_policy(
         role_statements(matrix, settings)
         + schema_statements(matrix, settings)
         + grant_statements(matrix, schema_columns, definer_owner=settings.definer_owner, baseline_eval_login=settings.baseline_eval_login)
-        + scope_function_statements(matrix, definer_owner=settings.definer_owner)
+        + scope_function_statements(matrix, definer_owner=settings.definer_owner,
+                                    baseline_eval_login=settings.baseline_eval_login)
         + rls_statements(matrix, baseline_eval_login=settings.baseline_eval_login)
         + login_default_statements(matrix, settings)
         + set_config_statements(matrix, settings)
