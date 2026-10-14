@@ -1,0 +1,112 @@
+{
+  "source_zip_sha256": "81bb8c7441cf2854c4415a6bdd7ef804b1a0f142523d87912c299ea3c17103a0",
+  "source_zip_bytes": 370876,
+  "source_files": 103,
+  "changed_files": {
+    "pyproject.toml": {
+      "git_blob_sha1": "c1aa1aa02f864571ad4813de66d9bf361b557eb5",
+      "sha256": "00ace17de6aec49676cad7773bb6dad26e0f5198a69a96be211b069e3c54a77b",
+      "bytes": 501
+    },
+    "seed_data.py": {
+      "git_blob_sha1": "c274a3faf76efd905fe2aed76f9675f50dfa285c",
+      "sha256": "842af089bed5b425f2f22aeaec7687322e15e7b1b3de802c02701969e6975e8f",
+      "bytes": 65112
+    },
+    "semantic/catalog.yaml": {
+      "git_blob_sha1": "818b3944cbd5357b97fd65f8ef9573c5f35cdce0",
+      "sha256": "eb692319f0cdd30ad87a71a847bf2ca5ada42e324c4ee8a922f68fd102895997",
+      "bytes": 13679
+    },
+    "src/stark_t2sql/config.py": {
+      "git_blob_sha1": "24ddf3b715c990d7676979ba47c8bb5255d4fb6c",
+      "sha256": "e2d61a9612b01f19026a0b812e7495bddd9062ffc2a7430ed3d50a76c12d1e4a",
+      "bytes": 14928
+    },
+    "src/stark_t2sql/context/builder.py": {
+      "git_blob_sha1": "3ba49da7c6a94034337d76fd69f01776395a69df",
+      "sha256": "b504fd8d23cdedc6bbdbb9887c60024998cb8ca9f9f31fd2c2e8f38357f14455",
+      "bytes": 17593
+    },
+    "src/stark_t2sql/context/semantic_filter.py": {
+      "git_blob_sha1": "dacc1075a76d7a774a45db40de083e3d884a87c4",
+      "sha256": "32a4f0a72415122e4f180d9bc904a8f200cdd1966f6b5eac75373d0002a174b6",
+      "bytes": 6168
+    },
+    "src/stark_t2sql/db/connections.py": {
+      "git_blob_sha1": "1802f770155a339d44d5b87a83be238a102ed797",
+      "sha256": "9cc8410be948f12fe906760caff4d18e06e8103165db9da1cc4abbbe5f9f815b",
+      "bytes": 31422
+    },
+    "src/stark_t2sql/evaluation/__main__.py": {
+      "git_blob_sha1": "e8b115f8d463999caf6fb786d503f333ab55f9a3",
+      "sha256": "b008c474abce4e4a069c53983bb173bedb09fcfec9c1154b8757a1d2bfa75905",
+      "bytes": 6155
+    },
+    "src/stark_t2sql/evaluation/ablation.py": {
+      "git_blob_sha1": "406e757d9bda409a1edbc2abaf19fab0a3cff29e",
+      "sha256": "2c8b06010ae03a3bb4bceebd40601677d58e8fa7f6464deee1274ed96160bd1b",
+      "bytes": 14485
+    },
+    "src/stark_t2sql/evaluation/comparator.py": {
+      "git_blob_sha1": "d30a85e99acc0a5cbabb96e33af28a6f9657a879",
+      "sha256": "7841069ecc38a8dc6f1043363afc89f86b1d2679a4481ad31fe7fea33f0df967",
+      "bytes": 15404
+    },
+    "src/stark_t2sql/evaluation/failure_classes.py": {
+      "git_blob_sha1": "980d5b5f1cc02e1269bb5d02c826a3ee15131f3e",
+      "sha256": "43c0d0ddea245bebfbdf6da00455a2a00cc6a67fa12509e7888ec6347a739d5e",
+      "bytes": 5139
+    },
+    "src/stark_t2sql/evaluation/reference.py": {
+      "git_blob_sha1": "da8c59935c07cca70fec526c242dd6e7043f0e36",
+      "sha256": "99f93cba94c647d776edfa237e5bc71fe12f8616b9b7038f08483a321c5664db",
+      "bytes": 28931
+    },
+    "src/stark_t2sql/evaluation/runner.py": {
+      "git_blob_sha1": "78972dd4c5a5ff2bddc0ee975faa004322ffed96",
+      "sha256": "5a29eb6268f9b8ac9b91fc22213864142c9f429eee64f335cac1bb45d217425a",
+      "bytes": 35570
+    },
+    "src/stark_t2sql/inference/client.py": {
+      "git_blob_sha1": "09401c6d37a7843fca9a4da2dfdbed0ff63dc104",
+      "sha256": "d8cb749356130db7a489d652cf4b9ad5bc4b2108b29be7d68c4585cbf0cf9883",
+      "bytes": 20885
+    },
+    "src/stark_t2sql/pipeline/answer.py": {
+      "git_blob_sha1": "1d12dfff344e21a73ee70fdc3ce331d137a7d6e8",
+      "sha256": "c9e44ea7ad2728d7edcdaf8c6156d6ccc850f6e972e01391db41d89c72e03cb0",
+      "bytes": 22943
+    },
+    "src/stark_t2sql/policy/compiler.py": {
+      "git_blob_sha1": "246eb971a52bb5a484aefaf2200bf6044938153a",
+      "sha256": "fd65e6d1c8421e3d5e113d905a9dd93c37a01abfeae6c568d28c09171a30bd23",
+      "bytes": 6648
+    },
+    "src/stark_t2sql/policy/grants.py": {
+      "git_blob_sha1": "67e00beaa6dbf9f12c8c9edddfd59e4de3287f30",
+      "sha256": "faf0ec1a6048f8349c6c5c541fd2e2036edb0e0fd9f70f571a6c97d0803a512c",
+      "bytes": 3489
+    },
+    "src/stark_t2sql/policy/rls.py": {
+      "git_blob_sha1": "d882ee1ba7f0e2fc8010e3e6249e7a6f5cf8150b",
+      "sha256": "12534aa7931af4fdd87f3ce15681b8358f9bcc29525f45ed67f9cee02ebe920e",
+      "bytes": 4984
+    },
+    "src/stark_t2sql/security/validator.py": {
+      "git_blob_sha1": "c439e6007aed5fc28dd470dacd3b70cfa8fccd0e",
+      "sha256": "d94a4de5552fefcfadbf493672ce879bef9afd001aa5aad6fa845e0480b9fd8a",
+      "bytes": 41197
+    },
+    "src/stark_t2sql/semantic/metrics.py": {
+      "git_blob_sha1": "9d3e9cdd3d2b8d95a947964f0a66dc478b95127c",
+      "sha256": "22aa8434223af74fcb0718a8d838cd7a967c308c812222d791ca9b7b1e06d16d",
+      "bytes": 3753
+    },
+    "src/stark_t2sql/semantic/resolver.py": {
+      "git_blob_sha1": "0c65f8064bcd9d2b8bc835a4069d823a60a63458",
+      "sha256": "06aabc3c523fcc378df4fea1f1abdaec00f61422a6631be662e49d7bd3a94934",
+      "bytes": 6106
+    }
+  }
+}
