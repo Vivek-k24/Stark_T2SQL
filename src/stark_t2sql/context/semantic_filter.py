@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import json
-from ..semantic.metrics import _bind_date
+from ..semantic.metrics import _MISSING_DATE, _bind_date, _require_date
 
 from ..db.catalog import SchemaSnapshot
 from ..errors import ConfigurationError
@@ -39,7 +39,7 @@ def _columns(references: tuple[ColumnRef, ...]) -> list[dict[str, str]]:
     return [_column(reference) for reference in sorted(references, key=lambda ref: (ref.table, ref.column))]
 
 
-def serialize_semantics(catalog: SemanticCatalog, *, as_of_date: date | None = None) -> str:
+def serialize_semantics(catalog: SemanticCatalog, *, as_of_date: date = _MISSING_DATE) -> str:
     """Serialize an already-governed projection; never include removed aliases.
 
     Stable mapping keys, definition IDs, aliases, source columns, relationships
@@ -47,6 +47,7 @@ def serialize_semantics(catalog: SemanticCatalog, *, as_of_date: date | None = N
     Filter sequence remains author-defined; grain column order remains semantic.
     A catalog supplied directly to this pure serializer is not authorization.
     """
+    _require_date(as_of_date)
     if type(catalog) is not SemanticCatalog:
         raise ConfigurationError("A typed governed catalog is required for semantic context.")
     entities = []
@@ -57,19 +58,19 @@ def serialize_semantics(catalog: SemanticCatalog, *, as_of_date: date | None = N
             "source_tables": sorted(entity.source_tables),
             "source_columns": _columns(entity.source_columns),
             "relationship_ids": sorted(entity.relationship_ids),
-            "filters": [_bind_date(f, as_of_date) if as_of_date is not None else f for f in entity.filters],
+            "filters": [_bind_date(f, as_of_date) for f in entity.filters],
             "temporal_rule_ids": sorted(entity.temporal_rule_ids),
         })
     metrics = []
     for identifier, metric in sorted(catalog.metrics.items()):
         metrics.append({
             "id": identifier, "name": metric.name, "description": metric.description,
-            "aliases": sorted(metric.aliases), "expression": _bind_date(metric.expression, as_of_date) if as_of_date is not None else metric.expression,
+            "aliases": sorted(metric.aliases), "expression": _bind_date(metric.expression, as_of_date),
             "grain": [_column(reference) for reference in metric.grain],
             "source_tables": sorted(metric.source_tables),
             "source_columns": _columns(metric.source_columns),
             "relationship_ids": sorted(metric.relationship_ids),
-            "filters": [_bind_date(f, as_of_date) if as_of_date is not None else f for f in metric.filters], "aggregation": metric.aggregation,
+            "filters": [_bind_date(f, as_of_date) for f in metric.filters], "aggregation": metric.aggregation,
             "null_handling": metric.null_handling, "units": metric.units,
             "temporal_rule_ids": sorted(metric.temporal_rule_ids),
             "dependencies": sorted(metric.dependencies),
@@ -83,25 +84,29 @@ def serialize_semantics(catalog: SemanticCatalog, *, as_of_date: date | None = N
         {"id": identifier, "description": rule.description,
          "source_tables": sorted(rule.source_tables),
          "source_columns": _columns(rule.source_columns),
-         "predicate": _bind_date(rule.predicate, as_of_date) if as_of_date is not None else rule.predicate, "selection": _bind_date(rule.selection, as_of_date) if as_of_date is not None else rule.selection}
+         "predicate": _bind_date(rule.predicate, as_of_date), "selection": _bind_date(rule.selection, as_of_date)}
         for identifier, rule in sorted(catalog.temporal_rules.items())
     ]
     ambiguities = [
         {"term": item.term, "targets": sorted(item.targets)}
         for item in sorted(catalog.ambiguities, key=lambda item: (item.term, item.targets))
     ]
-    return json.dumps(
-        {"catalog_version": catalog.version, "entities": entities, "metrics": metrics,
+    text = json.dumps(
+        {"catalog_version": catalog.version, "as_of_date": _bind_date(":as_of_date", as_of_date),
+         "entities": entities, "metrics": metrics,
          "relationships": relationships, "temporal_rules": temporal_rules,
          "ambiguities": ambiguities},
         ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":"),
     ) + "\n"
+    if ":as_of_date" in text.casefold():
+        raise ConfigurationError("Serialized semantics must not contain unbound date parameters.")
+    return text
 
 
 def compile_semantics(
     catalog: SemanticCatalog, matrix: PolicyMatrix,
     snapshot: SchemaSnapshot, business_role: str,
-    *, as_of_date: date | None = None,
+    *, as_of_date: date = _MISSING_DATE,
 ) -> FilteredSemantic:
     """Independently project and hash permissible semantic metadata.
 
@@ -109,12 +114,13 @@ def compile_semantics(
     already-filtered physical DDL snapshot is insufficient for whole-catalog
     schema/policy drift validation and must not be mistaken for that input.
     """
+    _require_date(as_of_date)
     projected = filter_catalog_for_role(catalog, matrix, snapshot, business_role)
     text = serialize_semantics(projected, as_of_date=as_of_date)
     return FilteredSemantic(projected, text, sha256_context(text), catalog.sha256, matrix.sha256, business_role)
 
 
-def compile_full_semantics(catalog: SemanticCatalog, matrix: PolicyMatrix, *, as_of_date: date | None = None) -> FilteredSemantic:
+def compile_full_semantics(catalog: SemanticCatalog, matrix: PolicyMatrix, *, as_of_date: date = _MISSING_DATE) -> FilteredSemantic:
     """Unfiltered semantic text for the separately authorized context ablation.
 
     The harness builder must first require catalog/schema contract validation
