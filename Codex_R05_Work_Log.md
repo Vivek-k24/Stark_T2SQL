@@ -138,3 +138,11 @@ Compared working-tree Git blob identities to approved design commit `93f7940243c
 Production parser approval remains unavailable and was not manufactured. Real PostgreSQL SQLSTATE 42501, ACL/RLS, query-resource enforcement, SQLCoder inference and full end-to-end acceptance are **not established by R05 offline tests**. Live security acceptance remains R09 work after owner authorization.
 
 The known progress mismatch is left for owner-prompted Antigravity verification. That later phase must verify the R04 merge, update `ops/progress.json` and canonical HTML, and protect/compare/update the owner's actual browser file at `H:\STARK T2SQL\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`, plus the legacy double-extension H-drive copy if still used. Codex has not updated either local browser copy. No Antigravity execution or next gate was initiated.
+
+## Publication and resumed handoff
+
+- Before the interruption, implementation, parser evidence, tests and this work log were committed and pushed as **`e0dc09fe54f00e9622479d00163fe82ce4aa4af9`**, `fix(r05): validate reviewed COUNT and negation parser layouts`. The draft PR had not yet been created.
+- On the owner's resume instruction, inspected both checkout statuses, recent commits, this log, remote branch heads and existing PRs. The implementation checkout was clean at that pushed commit. The original checkout still contained only its two unrelated review edits; they were preserved. The integration head remained `0e7f643a3577d32ab4e579c4a66ef6666e6ab5fe`.
+- No implementation or test was restarted. The source and tests were unchanged from the completed runs recorded above, so no redundant pytest run was performed after resuming.
+- Created exactly one **open draft [PR #20](https://github.com/Vivek-k24/Stark_T2SQL/pull/20)** from `codex/r05-remediation` to `gemini/full-remediation-review`. Verified GitHub's head SHA, draft flag, branch names and changed-file list. The PR includes Antigravity's pre-existing design review plus the nine R05 implementation/test/profile/log files; Codex did not edit that review.
+- A documentation-only follow-up records these publication details. Production parser sign-off, the existing progress test failure and live security acceptance retain the limitations above. Stop for the owner's next instruction; no merge, UI refresh, Antigravity launch or R06 start.
