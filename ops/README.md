@@ -30,6 +30,13 @@ The owner manually asks Antigravity to:
    update only the Architecture & Progress evidence region in the tracked
    `STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html` file.
 4. Commit and push that JSON + HTML with the gate's existing manual-review PR.
+5. Also update the owner's separate browser file at
+   `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html` from the freshly
+   rendered, reviewed GitHub-tracked `.html` file. First preserve any distinct
+   local edits in a backup outside the repository, then compare or SHA-256
+   hash both copies. Report `LOCAL_UI_UPDATED` only after verifying the
+   on-disk file; otherwise report `LOCAL_UI_NOT_UPDATED` and why. No copy
+   of the H-drive file or its backup belongs in GitHub.
 
 No scheduler, coordinator, headless agent integration, secret or broker token
 is required. No background process updates this information.
