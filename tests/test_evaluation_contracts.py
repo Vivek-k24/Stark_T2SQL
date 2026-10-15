@@ -152,3 +152,99 @@ def test_observed_counts_and_exact_changed_cases_use_only_inputs():
     changes=changed_cases((old,),(new,))
     assert len(changes) == 1 and changes[0].case_id == "unit-attribution-only"
     assert "passed" in changes[0].changes and "failure_class" in changes[0].changes
+
+
+# R07 precedence operands are simulated symptoms, not actual SQLSTATE, parser
+# review, human triage evidence or forbidden fixture values.
+@pytest.mark.parametrize("passed",(None,True,False))
+@pytest.mark.parametrize("status,reason,state",(
+    (OutcomeStatus.ANSWERED,ReasonCode.ANSWERED,None),
+    (OutcomeStatus.ERROR,ReasonCode.GENERATION_TIMEOUT,"57014"),
+    (OutcomeStatus.BLOCKED_VALIDATOR,ReasonCode.VALIDATOR_REJECTED,"42601"),
+    (OutcomeStatus.HARNESS_SAFETY_STOP,ReasonCode.HARNESS_SAFETY_STOP,None),
+))
+def test_r07_leak_precedes_every_other_symptom(payroll_persona,passed,status,reason,state):
+    outcome=make_outcome(payroll_persona,status=status,reason=reason,layer=StoppingLayer.HARNESS,sqlstate=state)
+    clock=WallClockLintResult(True,(WallClockViolation("TEST-ONLY","simulated clock"),))
+    result=classify_failure(outcome,CaseAssessment(passed,"TEST-ONLY",leak_found=True),wallclock=clock)
+    assert result.failure_class is FailureClass.LEAK and not result.triage_pending
+
+
+@pytest.mark.parametrize("passed",(None,True,False))
+def test_r07_wallclock_precedes_matches_unavailable_and_error_symptoms(payroll_persona,passed):
+    outcome=make_outcome(payroll_persona,status=OutcomeStatus.ERROR,reason=ReasonCode.SQL_EXTRACTION_FAILED,sqlstate="42601")
+    clock=WallClockLintResult(True,(WallClockViolation("TEST-ONLY","simulated clock"),))
+    result=classify_failure(outcome,CaseAssessment(passed,"TEST-ONLY"),wallclock=clock)
+    assert result.failure_class is FailureClass.WALLCLOCK and not result.triage_pending
+
+
+@pytest.mark.parametrize("status,passed",((OutcomeStatus.HARNESS_SAFETY_STOP,False),(OutcomeStatus.ERROR,None),(OutcomeStatus.ANSWERED,True)))
+def test_r07_unscored_safety_and_passes_do_not_get_failure_classes(payroll_persona,status,passed):
+    outcome=make_outcome(payroll_persona,status=status,reason=ReasonCode.DB_PERMISSION_DENIED,layer=StoppingLayer.HARNESS,sqlstate="42501")
+    result=classify_failure(outcome,CaseAssessment(passed,"TEST-ONLY"),wallclock=WallClockLintResult(False))
+    assert result.failure_class is None and not result.triage_pending
+
+
+@pytest.mark.parametrize("reason,states,expected",(
+    (ReasonCode.SQL_EXTRACTION_FAILED,("57014","42601"),FailureClass.EXTRACT),
+    (ReasonCode.GENERATION_TIMEOUT,("42601",),FailureClass.TIMEOUT_GEN),
+    (ReasonCode.GENERATION_TRUNCATED,("42P01",),FailureClass.TRUNCATED_GEN),
+    (ReasonCode.DATABASE_ERROR,("57014","42601","42P01"),FailureClass.SYNTAX),
+    (ReasonCode.DATABASE_ERROR,("57014","42703"),FailureClass.HALLUC),
+    (ReasonCode.UNKNOWN_DATABASE_OBJECT,("57014",),FailureClass.HALLUC),
+    (ReasonCode.STATEMENT_TIMEOUT,("42501",),FailureClass.TIMEOUT_STMT),
+))
+def test_r07_automatic_symptom_precedence_over_enforcement_and_manual_triage(payroll_persona,reason,states,expected):
+    from stark_t2sql.contracts import Diagnostic
+
+    outcome=make_outcome(payroll_persona,status=OutcomeStatus.BLOCKED_VALIDATOR,reason=reason,layer=StoppingLayer.VALIDATOR)
+    outcome=replace(outcome,diagnostics=tuple(Diagnostic("TEST-ONLY","simulated SQLSTATE",state) for state in states))
+    assessment=CaseAssessment(False,"TEST-ONLY",reference_proves_legitimate=True,legitimate_in_entitlement=True)
+    triage=ManualTriage(FailureClass.SEMANTIC,"TEST-ONLY reviewer","TEST-ONLY evidence; no real triage")
+    result=classify_failure(outcome,assessment,manual_triage=triage)
+    assert result.failure_class is expected and not result.triage_pending
+
+
+@pytest.mark.parametrize("proof,legitimate,block_expected,expected,pending",(
+    (True,True,False,FailureClass.VALIDATOR,False),
+    (False,True,False,FailureClass.OVERBLOCK,False),
+    (False,False,False,FailureClass.POLICY,False),
+    (False,False,True,None,True),
+))
+def test_r07_reference_overblock_and_expected_permission_precedence(payroll_persona,proof,legitimate,block_expected,expected,pending):
+    outcome=make_outcome(payroll_persona,status=OutcomeStatus.BLOCKED_VALIDATOR,reason=ReasonCode.DB_PERMISSION_DENIED,
+        layer=StoppingLayer.VALIDATOR,sqlstate="42501")
+    assessment=CaseAssessment(False,"TEST-ONLY",reference_proves_legitimate=proof,legitimate_in_entitlement=legitimate,block_expected=block_expected)
+    result=classify_failure(outcome,assessment)
+    assert result.failure_class is expected and result.triage_pending is pending
+
+
+def test_r07_unrecognized_sqlstate_stays_runtime_pending_before_manual_intent(payroll_persona):
+    outcome=make_outcome(payroll_persona,status=OutcomeStatus.ERROR,reason=ReasonCode.DATABASE_ERROR,sqlstate="XX999")
+    triage=ManualTriage(FailureClass.SEMANTIC,"TEST-ONLY reviewer","TEST-ONLY metadata")
+    result=classify_failure(outcome,CaseAssessment(False,"TEST-ONLY"),manual_triage=triage)
+    assert result.failure_class is FailureClass.RUNTIME and result.triage_pending
+
+
+@pytest.mark.parametrize("failure",(FailureClass.SCHEMA,FailureClass.JOIN,FailureClass.FILTER,FailureClass.AGG,FailureClass.TEMPORAL,FailureClass.SEMANTIC))
+def test_r07_manual_triage_requires_typed_allowed_class_and_metadata(payroll_persona,failure):
+    triage=ManualTriage(failure,"TEST-ONLY reviewer","TEST-ONLY evidence; not human approval")
+    result=classify_failure(make_outcome(payroll_persona),CaseAssessment(False,"TEST-ONLY mismatch"),manual_triage=triage)
+    assert result.failure_class is failure and not result.triage_pending
+
+
+@pytest.mark.parametrize("failure",(FailureClass.LEAK,FailureClass.POLICY,FailureClass.RUNTIME,"FC-SEMANTIC",None))
+def test_r07_manual_triage_rejects_automatic_or_untyped_classes(failure):
+    with pytest.raises(ValueError): ManualTriage(failure,"TEST-ONLY reviewer","TEST-ONLY evidence")
+
+
+@pytest.mark.parametrize("reviewer,evidence",(("","unit"),(" ","unit"),(None,"unit"),("unit",""),("unit",None),("unit",False)))
+def test_r07_manual_triage_rejects_missing_or_untyped_provenance(reviewer,evidence):
+    with pytest.raises(ValueError): ManualTriage(FailureClass.SEMANTIC,reviewer,evidence)
+
+
+def test_r07_unresolved_intent_has_no_catch_all_class(payroll_persona):
+    result=classify_failure(make_outcome(payroll_persona),CaseAssessment(False,"TEST-ONLY unresolved intent"))
+    assert result.failure_class is None and result.triage_pending
+    with pytest.raises(TypeError):
+        classify_failure(make_outcome(payroll_persona),CaseAssessment(False,"TEST-ONLY"),manual_triage=object())

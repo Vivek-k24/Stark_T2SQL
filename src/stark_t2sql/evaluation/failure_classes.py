@@ -17,7 +17,7 @@ class ManualTriage:
 
     def __post_init__(self) -> None:
         manual = {FailureClass.SCHEMA, FailureClass.JOIN, FailureClass.FILTER, FailureClass.AGG, FailureClass.TEMPORAL, FailureClass.SEMANTIC}
-        if self.failure_class not in manual or any(not isinstance(value, str) or not value.strip() for value in (self.reviewer, self.evidence_reference)):
+        if type(self.failure_class) is not FailureClass or self.failure_class not in manual or any(not isinstance(value, str) or not value.strip() for value in (self.reviewer, self.evidence_reference)):
             raise ValueError("Manual classification requires an allowed class and actual reviewer/evidence input")
 
 

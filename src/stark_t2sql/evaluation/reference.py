@@ -597,7 +597,7 @@ class CanarySelection:
         require_sha256(self.fixture_dump_sha256, "Actual canary-selector fixture")
         if not self.employee_ids or len(self.employee_ids) > 64 or len(set(self.employee_ids)) != len(self.employee_ids) or any(type(value) is not int or value <= 0 for value in self.employee_ids):
             raise ConfigurationError("Canaries require a bounded set of actual fixture-selected employee IDs.")
-        if not self.fields or not set(self.fields) <= {"email", "employee_number", "base_salary"}:
+        if not self.fields or len(set(self.fields)) != len(self.fields) or not set(self.fields) <= {"email", "employee_number", "base_salary"}:
             raise ConfigurationError("Canary reads are limited to the three FR-9 distinctive source fields.")
         if any(type(value) is not str or not value.strip() for value in (self.case_id, self.persona, self.selector_review_reference)):
             raise MissingDependencyError("Actual case/persona and selector review provenance are required.")
@@ -635,6 +635,8 @@ class FixtureCanaryProvider:
         try:
             from psycopg2 import sql
 
+            if type(case) is not Case:
+                raise MissingDependencyError("Canary computation requires an exact bound case.")
             selection = self._lookup(case.id)
             if type(selection) is not CanarySelection or selection.case_id != case.id or selection.persona != case.persona:
                 raise MissingDependencyError("Actual canary selectors are unavailable for this case and persona.")
@@ -648,7 +650,18 @@ class FixtureCanaryProvider:
                 probe = sql.SQL("SELECT COUNT(*) FROM {}.employees WHERE employee_id = {}").format(
                     sql.Identifier(self.snapshot.schema), sql.Literal(employee_id),
                 )
-                visibility[employee_id] = self._observer._read(persona, probe, count=True) != 0
+                observed = self._observer._read(persona, probe, count=True)
+                if type(observed) is not int or observed not in {0, 1}:
+                    raise MissingDependencyError("Employee-cell visibility was not conclusively observed.")
+                visibility[employee_id] = observed == 1
+            candidates = {}
+            for field_name in selection.fields:
+                table = "employee_compensation" if field_name == "base_salary" else "employees"
+                allowed = self.source.matrix.permitted_columns(role.name, table, self.snapshot.columns_by_table[table])
+                candidates[field_name] = tuple(employee_id for employee_id in selection.employee_ids
+                    if not (field_name in allowed and visibility[employee_id]))
+            if not any(candidates.values()):
+                raise MissingDependencyError("No forbidden cells remain in this selector.")
             values = []
             self.source.config.resource_budgets.require_database_budget_inputs()
             with self.source._admin_source.connection(readonly=True) as connection:
@@ -656,7 +669,7 @@ class FixtureCanaryProvider:
                     with connection.cursor() as cursor:
                         cursor.execute("SELECT rolsuper, rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = session_user")
                         flags = cursor.fetchone()
-                        if flags is None or not any(flags):
+                        if flags is None or len(flags) != 2 or any(type(flag) is not bool for flag in flags) or not any(flags):
                             raise MissingDependencyError("Trusted canary read must establish complete FORCE-RLS source visibility.")
                         cursor.execute(sql.SQL("SELECT employee_id FROM {}.employees WHERE employee_id = ANY(%s)").format(sql.Identifier(self.snapshot.schema)), (list(selection.employee_ids),))
                         found = {row[0] for row in cursor.fetchall()}
@@ -664,21 +677,27 @@ class FixtureCanaryProvider:
                             raise MissingDependencyError("Canary selectors name employees absent from the actual fixture.")
                         for field_name in selection.fields:
                             table = "employee_compensation" if field_name == "base_salary" else "employees"
-                            allowed = self.source.matrix.permitted_columns(role.name, table, self.snapshot.columns_by_table[table])
-                            # A field granted on visible rows is not forbidden.
-                            if field_name in allowed and any(visibility.values()):
-                                raise ConfigurationError("A selector includes a cell permitted to this persona; it cannot serve as a forbidden canary.")
-                            order_clause = "ORDER BY employee_id, effective_date DESC, compensation_id ASC" if table == "employee_compensation" else "ORDER BY employee_id"
-                            query = sql.SQL(f"SELECT {{}} FROM {{}}.{{}} WHERE employee_id = ANY(%s) {order_clause}").format(
+                            candidate_ids = candidates[field_name]
+                            if not candidate_ids:
+                                continue  # Never read a permitted cell's value.
+                            salary = field_name == "base_salary"
+                            distinct = "DISTINCT ON (employee_id) " if salary else ""
+                            temporal = " AND effective_date <= %s AND (effective_to IS NULL OR effective_to > %s)" if salary else ""
+                            order_clause = "ORDER BY employee_id, effective_date DESC, compensation_id ASC" if salary else "ORDER BY employee_id"
+                            query = sql.SQL(f"SELECT {distinct}{{}} FROM {{}}.{{}} WHERE employee_id = ANY(%s){temporal} {order_clause}").format(
                                 sql.Identifier(field_name), sql.Identifier(self.snapshot.schema), sql.Identifier(table),
                             )
-                            cursor.execute(query, (list(selection.employee_ids),))
+                            parameters = (list(candidate_ids), case.as_of_date, case.as_of_date) if salary else (list(candidate_ids),)
+                            cursor.execute(query, parameters)
                             rows = cursor.fetchmany(self.source.config.limits.output_row_cap + 1)
                             if len(rows) > self.source.config.limits.output_row_cap:
                                 raise MissingDependencyError("Canary read was incomplete at the configured row cap.")
                             for row in rows:
                                 value = row[0]
-                                require_distinctive_canary(value)
+                                try:
+                                    require_distinctive_canary(value)
+                                except ValueError:
+                                    continue  # Nondistinctive cells are not leak evidence.
                                 values.append(value)
             unique = {}
             for value in values:
