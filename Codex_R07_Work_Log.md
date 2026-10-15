@@ -177,4 +177,9 @@ No merge, `main` push, automatic reviewer launch, R08 work, scheduler or orchest
 
 ## Publication record
 
-Publication details are recorded below after the implementation commit and draft PR are created and verified.
+- Implementation commit: [`83a6384c1aa554b1479a26b6720503d2b116d811`](https://github.com/Vivek-k24/Stark_T2SQL/commit/83a6384c1aa554b1479a26b6720503d2b116d811), `fix(r07): harden canary evidence and reconcile evaluation accounting`. Contains the nine implementation/test/log files listed above. Pushed to the existing `codex/r07-remediation` branch and verified against `git ls-remote`.
+- Draft PR: [#22 - R07: secure canary selection and complete evaluation accounting](https://github.com/Vivek-k24/Stark_T2SQL/pull/22). GitHub reported `OPEN`, `isDraft=true`, head `codex/r07-remediation`, base `gemini/full-remediation-review`, and the matching implementation SHA. Listing all PRs for that head returned exactly this one PR.
+- Verified PR scope: the nine Codex files above plus the pre-existing approved `Antigravity_R07_Review.md` from `a313f3cf87d2433bac1349ab209d431389c3ab06`. No other paths appear in the PR.
+- A documentation-only follow-up records these actual publication details. It changes only this log and does not change the tested implementation or test results. Its final pushed SHA is reported in the owner handoff and is available in this file's Git history.
+
+Final implementation status: **complete, offline tests passing, draft PR awaiting owner-requested independent Antigravity verification**. No merge or next phase was initiated.
