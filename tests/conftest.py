@@ -1,7 +1,9 @@
-"""Offline source metadata and separately required external review evidence.
+"""Offline source metadata, test parser evidence and external acceptance inputs.
 
 The DDL fallback describes checked-in structure only, not a live catalog audit.
-Parser, adversarial, reference and live-DB approvals are never synthesized.
+The explicit R05 parser fixture exercises only its empirically tested subset.
+It is not human production approval. Adversarial/reference/live-DB evidence
+still requires separately supplied inputs; no acceptance evidence is invented.
 """
 from __future__ import annotations
 
@@ -114,8 +116,15 @@ def _offline_schema_snapshot(project_root):
 
 @pytest.fixture(scope="session")
 def parser_approval(project_root):
-    raw = json.loads(required_input("STARK_TEST_PARSER_REVIEW_PATH", project_root).read_text(encoding="utf-8"))
-    # The file is actual review input, not inferred from installed capabilities.
+    """Prefer an explicit external profile; otherwise use TEST-ONLY R05 evidence.
+
+    The authored JSON pins one release and a measured subset. Neither runtime
+    composition nor production approval loads this pytest-only fallback.
+    """
+    path = (required_input("STARK_TEST_PARSER_REVIEW_PATH", project_root)
+            if os.environ.get("STARK_TEST_PARSER_REVIEW_PATH") else
+            project_root / "tests" / "fixtures" / "parser_approval_sqlglot_30_22_0.json")
+    raw = json.loads(path.read_text(encoding="utf-8"))
     raw["approved_node_shapes"] = frozenset(raw["approved_node_shapes"])
     raw["approved_function_rule_ids"] = frozenset(raw["approved_function_rule_ids"])
     return ParserReviewApproval(**raw)
