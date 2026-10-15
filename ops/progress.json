@@ -1,26 +1,13 @@
 {
-  "automation": {
-    "reason": "Opt-in task and real agent CLI/auth/sandbox smoke tests required",
-    "state": "BLOCKED"
-  },
   "base": "gemini/full-remediation-review",
   "frd": "1.8",
-  "github_base_sha": "3855429425020c3619e24fabc64d45d988828009",
+  "github_base_sha": "cc081e85e442657cef5831a64fc401abe4c4c949",
   "interim": {
     "gate": "INT-01",
-    "head_sha": "b86a3234ef426dd768b76bd044fa24756f741d74",
     "issue": 15,
-    "issue_state": "open",
-    "issue_title": "INT-01 | Automated agent handoffs and live UI activation before R04",
-    "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/15",
     "pr": 16,
-    "state": "VERIFIED — AWAITING MERGE",
-    "tests": {
-      "failed": 0,
-      "passed": 514,
-      "scope": "offline",
-      "skipped": 177
-    },
+    "state": "MERGED — UI retained; agent automation retired",
+    "merge_sha": "cc081e85e442657cef5831a64fc401abe4c4c949",
     "url": "https://github.com/Vivek-k24/Stark_T2SQL/pull/16"
   },
   "milestones": [

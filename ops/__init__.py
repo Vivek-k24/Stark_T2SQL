@@ -1,1 +1,1 @@
-"""Public project coordination only; never HR/model/database execution."""
+"""Standalone, human-directed project progress and offline UI helpers."""
