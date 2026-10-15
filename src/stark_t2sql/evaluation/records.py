@@ -196,6 +196,16 @@ def _json_value(value: object) -> object:
 _WRITE_LOCK = Lock()
 
 
+def validate_case_accounting(values: Mapping[str, int]) -> None:
+    required = {"total_cases", "scored_cases", "unscored_cases", "pending_triage_cases", "unsubmitted_cases", "pending_cases"}
+    if not isinstance(values, Mapping) or set(values) != required or any(type(value) is not int or value < 0 for value in values.values()):
+        raise ConfigurationError("Case accounting requires exact nonnegative integer counts.")
+    if values["total_cases"] != values["scored_cases"] + values["unscored_cases"] + values["unsubmitted_cases"]:
+        raise ConfigurationError("Scored, unscored and unsubmitted cases must reconcile to the total.")
+    if values["pending_cases"] != values["unscored_cases"] + values["unsubmitted_cases"] or values["pending_triage_cases"] > values["scored_cases"]:
+        raise ConfigurationError("Pending triage is a subset of scored failures, not additional pending cases.")
+
+
 class EvaluationRecordWriter:
     """Metadata-only local writer; construction creates nothing.
 
@@ -253,9 +263,21 @@ class EvaluationRecordWriter:
     def write_summary(self, summary: Mapping[str, object]) -> None:
         # Caller supplies only counts/percentages and changed IDs/observations;
         # this function does not compute or invent measured outcomes.
-        allowed = {"accuracy", "leakage", "attribution", "changed_cases", "complete", "source_limits", "unavailable_inputs", "unsubmitted_case_ids"}
+        allowed = {"accuracy", "leakage", "attribution", "changed_cases", "complete", "source_limits", "unavailable_inputs", "unsubmitted_case_ids", "accounting"}
         if set(summary) - allowed:
             raise ConfigurationError("Summary fields cannot contain question/reference/canary payloads.")
+        if "accounting" in summary:
+            values = summary["accounting"]
+            if not isinstance(values, Mapping):
+                raise ConfigurationError("Case accounting must be explicit metadata.")
+            validate_case_accounting(values)
+            accuracy = summary.get("accuracy")
+            if isinstance(accuracy, Mapping) and (
+                any(accuracy.get(key) != values[field] for key, field in (("scored", "scored_cases"), ("unscored", "unscored_cases"), ("pending_triage_count", "pending_triage_cases")))
+                or accuracy.get("total") != values["total_cases"] - values["unsubmitted_cases"]
+                or type(accuracy.get("failed")) is not int or values["pending_triage_cases"] > accuracy["failed"]
+            ):
+                raise ConfigurationError("Summary accounting disagrees with its actual accuracy histogram.")
         self._append("summary.jsonl", {"record_type": "SUMMARY", "run_id": self.run_id, **summary})
 
     def record_exposure(self, exposure: HoldoutExposure) -> None:
@@ -263,15 +285,24 @@ class EvaluationRecordWriter:
             raise ConfigurationError("Exposure metadata requires this sealed boundary writer.")
         self._append("exposures.jsonl", {"record_type": "HOLDOUT_EXPOSURE", **asdict(exposure)})
 
-    def append_project_log(self, record: RunRecord, *, scored_cases: int, pending_cases: int) -> None:
+    def append_project_log(self, record: RunRecord, *, scored_cases: int, pending_cases: int, accounting: Mapping[str, int] | None = None) -> None:
         """Future brief actual run metadata, never a source-only progress claim."""
         if record.run_id != self.run_id or record.partition is not self.partition:
             raise ConfigurationError("Project-log metadata must match the completed local run.")
+        if any(type(value) is not int or value < 0 for value in (scored_cases, pending_cases)):
+            raise ConfigurationError("Project-log counts must be nonnegative integers.")
+        details = ""
+        if accounting is not None:
+            validate_case_accounting(accounting)
+            if scored_cases != accounting["scored_cases"] or pending_cases != accounting["pending_cases"]:
+                raise ConfigurationError("Project-log counts disagree with run accounting.")
+            details = (f"total cases={accounting['total_cases']}, unscored cases={accounting['unscored_cases']}, "
+                       f"unsubmitted cases={accounting['unsubmitted_cases']}, pending triage cases={accounting['pending_triage_cases']}; ")
         # Sealed runs expose metadata only, never case IDs or content here.
         text = (
             f"\n- Run {record.run_id}: {record.mode.value}, {record.partition.value}, "
             f"prompt v{record.settings.prompt_version}; scored cases={scored_cases}, "
-            f"pending cases={pending_cases}; warmup performed={record.warmup.performed}. "
+            f"pending cases={pending_cases}; {details}warmup performed={record.warmup.performed}. "
             f"Case-set SHA-256={record.fingerprints.case_set_sha256 or 'unavailable'}.\n"
         )
         path = self.root / "PROJECT_LOG.md"

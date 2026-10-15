@@ -281,6 +281,10 @@ def test_canonical_definition_id_mismatch_is_not_reference_success(monkeypatch,p
     plan=replace(unit_plan(index,matrix),canonical_expectations=((metadata.id,"active_headcount"),))
     writer,writes=memory_writer(project_root,plan)
     harness,calls=protocol_harness(project_root,matrix,payroll_persona,model=True)
+    # The resolver is deliberately stubbed below; present unit capabilities
+    # distinguish a wrong definition from genuinely missing input.
+    harness._runtime.catalog=SimpleNamespace(sha256=None)
+    harness._runtime.snapshot=object()
     references=object.__new__(ReferenceAuthority)
     references.source=harness.source
     references.evaluate=lambda *args:ReferenceResult(True,ResultTable((ColumnMetadata("unit_value",canonical_identity="unit_value"),),()),"Unit mock oracle only",True)
@@ -423,3 +427,236 @@ def test_never_execute_plan_binding_cannot_target_model_question(project_root,ma
     with pytest.raises(ConfigurationError):
         EvaluationRunner(harness,references=None,wallclock_review=None).run((loaded,),plan,writer,warmup_case=loaded)
     assert not calls and not writes
+
+
+@pytest.mark.parametrize("candidate,reference_sql",(
+    ("SELECT 1","SELECT 1;"),("SELECT 1;","SELECT 1"),
+    (" \nSELECT 1; \t","SELECT 1"),("SELECT 1 ;","SELECT 1;"),
+    ("SELECT ';' AS unit_value","SELECT ';' AS unit_value;"),
+    ("SELECT 'a;b' AS unit_value;","SELECT 'a;b' AS unit_value"),
+))
+def test_r07_reference_proof_allows_only_optional_single_terminator(matrix,candidate,reference_sql):
+    from stark_t2sql.evaluation.runner import _candidate_matches_reference
+    from stark_t2sql.utils.fingerprints import sha256_context
+
+    reference=ReferenceResult(True,ResultTable((ColumnMetadata("x",canonical_identity="x"),),(),sha256_context(reference_sql)),
+        "TEST-ONLY simulated reference receipt",True)
+    assert _candidate_matches_reference(candidate,reference,matrix)
+    assert reference.table.sql_sha256 == sha256_context(reference_sql)
+
+
+@pytest.mark.parametrize("candidate",(
+    "SELECT 1;;","SELECT 1; SELECT 2","SELECT 1; SET ROLE app_payroll",";SELECT 1",
+    "SELECT 'unterminated","WITH gone AS (DELETE FROM employees RETURNING employee_id) SELECT * FROM gone",
+    "SELECT employee_id FROM employees FOR UPDATE","SELECT 1 INTO unit_write", " ",None,
+))
+def test_r07_matching_hash_cannot_prove_malformed_or_multistatement_candidate(matrix,candidate):
+    from stark_t2sql.evaluation.runner import _candidate_matches_reference
+    from stark_t2sql.utils.fingerprints import sha256_context
+
+    reference=ReferenceResult(True,ResultTable((ColumnMetadata("x",canonical_identity="x"),),(),sha256_context(candidate or "")),
+        "TEST-ONLY counterfeit receipt for a negative test",True)
+    assert not _candidate_matches_reference(candidate,reference,matrix)
+
+
+@pytest.mark.parametrize("reference",(
+    ReferenceResult(False,None,"TEST-ONLY unavailable"),
+    ReferenceResult(True,ResultTable((ColumnMetadata("x",canonical_identity="x"),),()),"TEST-ONLY unbound",True),
+))
+def test_r07_unavailable_or_unbound_reference_never_proves_candidate(matrix,reference):
+    from stark_t2sql.evaluation.runner import _candidate_matches_reference
+
+    assert not _candidate_matches_reference("SELECT 1",reference,matrix)
+
+
+def test_r07_reference_legitimacy_flag_and_exact_sql_meaning_are_required(matrix):
+    from stark_t2sql.evaluation.runner import _candidate_matches_reference
+    from stark_t2sql.utils.fingerprints import sha256_context
+
+    reference=ReferenceResult(True,ResultTable((ColumnMetadata("x",canonical_identity="x"),),(),sha256_context("SELECT 1")),
+        "TEST-ONLY unproven receipt",False)
+    assert not _candidate_matches_reference("SELECT 1",reference,matrix)
+    assert not _candidate_matches_reference("SELECT 2",replace(reference,proves_legitimate=True),matrix)
+    assert not _candidate_matches_reference("SELECT  1",replace(reference,proves_legitimate=True),matrix)
+
+
+@pytest.mark.parametrize("candidate,reference_sql",(
+    ("SELECT 1 -- unit;","SELECT 1 -- unit"),("SELECT 1 -- unit","SELECT 1 -- unit;"),
+))
+def test_r07_semicolon_inside_line_comment_is_not_a_statement_terminator(matrix,candidate,reference_sql):
+    from stark_t2sql.evaluation.runner import _candidate_matches_reference
+    from stark_t2sql.utils.fingerprints import sha256_context
+
+    reference=ReferenceResult(True,ResultTable((ColumnMetadata("x",canonical_identity="x"),),(),sha256_context(reference_sql)),
+        "TEST-ONLY comment proof boundary",True)
+    assert not _candidate_matches_reference(candidate,reference,matrix)
+
+
+def test_r07_direct_canonical_case_without_catalog_or_snapshot_is_unscored(project_root,matrix,payroll_persona):
+    payload,metadata,index=unit_payload(CasePartition.TUNING,expected=ExpectedOutcome.CANONICAL_RESOLUTION)
+    loaded=tuning_loaded(index,payload,metadata)
+    plan=replace(unit_plan(index,matrix),canonical_expectations=((metadata.id,"unit-definition"),))
+    writer,_=memory_writer(project_root,plan)
+    harness,_=protocol_harness(project_root,matrix,payroll_persona)
+    del harness._runtime.catalog;del harness._runtime.snapshot
+    harness.direct=lambda *args,**kwargs:make_outcome(payroll_persona,columns=(ColumnMetadata("unit_value",canonical_identity="unit_value"),))
+    references=object.__new__(ReferenceAuthority);references.source=harness.source
+    references.evaluate=lambda *_:ReferenceResult(True,ResultTable((ColumnMetadata("unit_value",canonical_identity="unit_value"),),()),"TEST-ONLY simulated reference",True)
+    summary=EvaluationRunner(harness,references=references,wallclock_review=None).run((loaded,),plan,writer)
+    assert summary.records[0].assessment is None and summary.unscored_cases==1
+
+
+@pytest.mark.parametrize("candidate,reference_sql",(("SELECT 1 AS unit_value","SELECT 1 AS unit_value;"),("SELECT 1 AS unit_value;","SELECT 1 AS unit_value")))
+def test_r07_runner_attributes_proven_validator_rejection_in_both_terminator_directions(monkeypatch,project_root,matrix,payroll_persona,candidate,reference_sql):
+    from stark_t2sql.contracts import FailureClass
+    from stark_t2sql.utils.fingerprints import sha256_context
+
+    payload,metadata,index=unit_payload(CasePartition.TUNING,expected=ExpectedOutcome.MATCH_REFERENCE,sql_text=candidate)
+    loaded=tuning_loaded(index,payload,metadata)
+    plan=unit_plan(index,matrix);writer,_=memory_writer(project_root,plan)
+    harness,_=protocol_harness(project_root,matrix,payroll_persona)
+    harness.direct=lambda case,profile,**kwargs:make_outcome(payroll_persona,status=OutcomeStatus.BLOCKED_VALIDATOR,
+        reason=ReasonCode.VALIDATOR_REJECTED,layer=StoppingLayer.VALIDATOR,sql=candidate)
+    references=object.__new__(ReferenceAuthority);references.source=harness.source
+    references.evaluate=lambda *_:ReferenceResult(True,ResultTable((ColumnMetadata("unit_value",canonical_identity="unit_value"),),(),sha256_context(reference_sql)),
+        "TEST-ONLY mocked frozen reference",True)
+    summary=EvaluationRunner(harness,references=references,wallclock_review=None).run((loaded,),plan,writer)
+    assert summary.records[0].failure_class is FailureClass.VALIDATOR
+
+
+@pytest.mark.parametrize("missing",("catalog_none","snapshot_none","catalog_absent","snapshot_absent"))
+def test_r07_incomplete_canonical_runtime_is_unscored_without_resolver(monkeypatch,project_root,matrix,payroll_persona,missing):
+    import stark_t2sql.evaluation.runner as module
+
+    payload,metadata,index=unit_payload(CasePartition.TUNING,question=True,expected=ExpectedOutcome.CANONICAL_RESOLUTION)
+    loaded=tuning_loaded(index,payload,metadata)
+    plan=replace(unit_plan(index,matrix),canonical_expectations=((metadata.id,"unit-definition"),))
+    writer,_=memory_writer(project_root,plan)
+    harness,_=protocol_harness(project_root,matrix,payroll_persona,model=True)
+    harness._runtime.catalog=SimpleNamespace(sha256=None)
+    harness._runtime.snapshot=object()
+    attribute=missing.split("_")[0]
+    if missing.endswith("absent"): delattr(harness._runtime,attribute)
+    else: setattr(harness._runtime,attribute,None)
+    def forbidden_resolve(*args): raise AssertionError("No canonical evidence may be synthesized")
+    monkeypatch.setattr(module,"resolve_question",forbidden_resolve)
+    references=object.__new__(ReferenceAuthority);references.source=harness.source
+    references.evaluate=lambda *_:ReferenceResult(True,ResultTable((ColumnMetadata("unit_value",canonical_identity="unit_value"),),()),"TEST-ONLY mocked reference",True)
+    summary=EvaluationRunner(harness,references=references,wallclock_review=None).run((loaded,),plan,writer,warmup_case=loaded)
+    assert summary.records[0].assessment is None and not summary.records[0].triage_pending
+    assert summary.unscored_cases == 1 and summary.total_cases == 1
+
+
+def r07_unit_cases(count):
+    """Synthetic tuning payloads only, independent of actual sealed assets."""
+    from stark_t2sql.evaluation.holdout import split_for_id
+
+    entries=[];payloads={}
+    ordinal=0
+    while len(entries)<count:
+        case_id=f"unit-r07-partial-{ordinal}";ordinal+=1
+        if split_for_id(case_id) is not CasePartition.TUNING: continue
+        expected=ExpectedOutcome.BLOCKED_ANY if not entries else ExpectedOutcome.MATCH_REFERENCE
+        raw=dict(id=case_id,set="regressions",persona="payroll",as_of_date="2026-10-12",expected_outcome=expected.value,
+            sql="SELECT 1 AS unit_value")
+        if expected is ExpectedOutcome.MATCH_REFERENCE: raw["reference_sql"]="SELECT 1 AS unit_value"
+        payload=json.dumps(raw,sort_keys=True).encode()
+        entry=FrozenCaseMetadata(case_id,CasePartition.TUNING,sha256_bytes(payload));entries.append(entry);payloads[case_id]=payload
+    index=FrozenCaseIndex(tuple(entries),"TEST-ONLY tuning metadata; no benchmark freeze")
+    loaded=tuple(load_tuning_case(index,entry.id,CaseSet.REGRESSIONS,loader=lambda entry:payloads[entry.id]) for entry in entries)
+    return loaded,index
+
+
+def test_r07_partial_cancel_accounts_pass_failure_triage_unscored_and_unsubmitted(monkeypatch,project_root,matrix,payroll_persona):
+    from threading import Event
+    import stark_t2sql.evaluation.runner as module
+
+    loaded,index=r07_unit_cases(4)
+    plan=unit_plan(index,matrix);writer,writes=memory_writer(project_root,plan)
+    harness,calls=protocol_harness(project_root,matrix,payroll_persona)
+    cancel=Event()
+    def direct(case,profile,**kwargs):
+        calls.append(case.id)
+        if case.id==loaded[0].case.id:
+            return make_outcome(payroll_persona,status=OutcomeStatus.BLOCKED_VALIDATOR,reason=ReasonCode.VALIDATOR_REJECTED,layer=StoppingLayer.VALIDATOR)
+        if case.id==loaded[2].case.id: cancel.set()
+        return make_outcome(payroll_persona,columns=(ColumnMetadata("unit_value",canonical_identity="unit_value"),),rows=((2,),),sql=case.sql)
+    harness.direct=direct
+    references=object.__new__(ReferenceAuthority);references.source=harness.source
+    references.evaluate=lambda case,mode: (ReferenceResult(False,None,"TEST-ONLY missing reference") if case.id==loaded[2].case.id else
+        ReferenceResult(True,ResultTable((ColumnMetadata("unit_value",canonical_identity="unit_value"),),((1,),)),"TEST-ONLY simulated reference",True))
+    monkeypatch.setattr(module,"lint_wallclock",lambda *args,**kwargs:WallClockLintResult(True))
+    summary=EvaluationRunner(harness,references=references,wallclock_review=None).run(loaded,plan,writer,cancel_event=cancel)
+    assert summary.accounting == dict(total_cases=4,scored_cases=2,unscored_cases=1,pending_triage_cases=1,unsubmitted_cases=1,pending_cases=2)
+    assert summary.total_cases == summary.scored_cases+summary.unscored_cases+summary.unsubmitted_cases
+    assert summary.unsubmitted_case_ids == (loaded[3].case.id,) and len(calls)==3
+    assert not summary.complete and len(summary.records)==3
+    recorded=next(event[1] for event in writes if event[0]=="summary")
+    assert recorded["accounting"] == summary.accounting
+    project=next(event[2] for event in writes if event[0]=="project_metadata")
+    assert project["pending_cases"]==2 and project["accounting"]["pending_triage_cases"]==1
+
+
+def test_r07_cancel_before_submission_records_all_cases_as_unsubmitted(project_root,matrix,payroll_persona):
+    from threading import Event
+
+    loaded,index=r07_unit_cases(2)
+    plan=unit_plan(index,matrix);writer,writes=memory_writer(project_root,plan)
+    harness,calls=protocol_harness(project_root,matrix,payroll_persona)
+    cancel=Event();cancel.set()
+    summary=EvaluationRunner(harness,references=None,wallclock_review=None).run(loaded,plan,writer,cancel_event=cancel)
+    assert summary.total_cases==summary.unsubmitted_cases==summary.pending_cases==2
+    assert not summary.records and not summary.observations and not calls
+    assert summary.scored_cases==summary.unscored_cases==summary.pending_triage_cases==0
+    assert not any(event[0]=="case" for event in writes)
+
+
+def test_r07_failed_canary_provider_does_not_erase_an_already_observed_fixture_bound_leak(project_root,matrix,payroll_persona):
+    from stark_t2sql.contracts import ArtifactFingerprints,FailureClass
+    from stark_t2sql.evaluation.reference import CanaryResult,FixtureCanaryProvider
+
+    # Synthetic bound case canary only; no actual fixture/holdout content.
+    payload,metadata,_=unit_payload(CasePartition.TUNING,canaries=True)
+    raw=json.loads(payload)
+    digest=sha256_bytes(b"TEST-ONLY canary fixture binding")
+    raw.update(forbidden_values=["unit-private-forbidden@invalid"],forbidden_values_fixture_sha256=digest)
+    payload=json.dumps(raw,sort_keys=True).encode()
+    metadata=replace(metadata,payload_sha256=sha256_bytes(payload))
+    index=FrozenCaseIndex((metadata,),"TEST-ONLY canary precedence")
+    loaded=tuning_loaded(index,payload,metadata)
+    plan=replace(unit_plan(index,matrix),fingerprints=RunFingerprints(fixture_dump_sha256=digest,access_matrix_sha256=matrix.sha256,case_set_sha256=index.sha256))
+    writer,_=memory_writer(project_root,plan)
+    harness,_=protocol_harness(project_root,matrix,payroll_persona)
+    harness._runtime.personas.fixture_dump_sha256=digest
+    harness.direct=lambda *args,**kwargs:replace(make_outcome(payroll_persona,columns=("x",),rows=(("unit-private-forbidden@invalid",),)),
+        fingerprints=ArtifactFingerprints(dataset=digest))
+    provider=object.__new__(FixtureCanaryProvider);provider.source=harness.source
+    provider.for_case=lambda _:CanaryResult(False,None,"TEST-ONLY unavailable provider")
+    summary=EvaluationRunner(harness,references=None,wallclock_review=None,canaries=provider).run((loaded,),plan,writer)
+    assert summary.records[0].failure_class is FailureClass.LEAK
+    assert summary.records[0].assessment is False and summary.records[0].leakage_observed is True
+
+
+@pytest.mark.parametrize("passes,failures,triage,unscored,unsubmitted",((1,1,1,1,2),(0,1,1,0,0),(0,0,0,2,0),(0,0,0,0,3),(0,0,0,0,0)))
+def test_r07_summary_categories_reconcile_without_double_counting(payroll_persona,fixture_date,passes,failures,triage,unscored,unsubmitted):
+    from stark_t2sql.evaluation.runner import RunSummary
+    from stark_t2sql.evaluation.attribution import LayerObservation,accuracy_histogram
+    from stark_t2sql.evaluation.records import case_record
+
+    observations=[];records=[]
+    states=[True]*passes+[False]*failures+[None]*unscored
+    for index,passed in enumerate(states):
+        case_id=f"unit-summary-{index}"
+        pending=passes<=index<passes+triage
+        observations.append(LayerObservation(case_id,ExecutionMode.FULL,OutcomeStatus.ANSWERED,StoppingLayer.NONE,passed,None,triage_pending=pending))
+        case=Case(case_id,CaseSet.REGRESSIONS,"payroll",fixture_date,ExpectedOutcome.BLOCKED_ANY,question="TEST-ONLY accounting operand")
+        records.append(case_record(case,make_outcome(payroll_persona),run_id="unit-accounting",partition=CasePartition.TUNING,
+            assessment=passed,assessment_reason="TEST-ONLY",leakage_observed=None,failure_class=None,triage_pending=pending,candidate_sha256=None))
+    summary=RunSummary("unit-accounting",ExecutionMode.FULL,CasePartition.TUNING,tuple(observations),accuracy_histogram(observations),
+        tuple(records),False,(),(),tuple(f"unit-unsubmitted-{index}" for index in range(unsubmitted)))
+    assert summary.total_cases==passes+failures+unscored+unsubmitted
+    assert summary.scored_cases==passes+failures and summary.pending_triage_cases==triage
+    assert summary.pending_cases==unscored+unsubmitted
+    with pytest.raises(ConfigurationError): replace(summary,histogram=replace(summary.histogram,scored=summary.scored_cases+1))
+    if unsubmitted or unscored or triage:
+        with pytest.raises(ConfigurationError): replace(summary,complete=True)
