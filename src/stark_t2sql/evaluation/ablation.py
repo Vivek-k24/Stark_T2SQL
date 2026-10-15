@@ -19,11 +19,11 @@ from uuid import uuid4
 from ..context.builder import build_harness_context
 from ..contracts import (
     ArtifactFingerprints, Diagnostic, ExecutionMode, InputRequest, Outcome, OutcomeStatus,
-    Persona, ReasonCode, RequestContext, RequestTimings, RowScopeKind, StoppingLayer,
+    Persona, ReasonCode, RequestContext, RequestTimings, StoppingLayer,
 )
 from ..db.connections import EvaluationConnectionSource
 from ..db.executor import EvaluationExecutor, ValidatedSelect, ValidationAuthority
-from ..errors import ConfigurationError, HarnessSafetyStopError, StarkT2SQLError
+from ..errors import ConfigurationError, HarnessSafetyStopError, MissingDependencyError, StarkT2SQLError
 from ..inference.client import warmup
 from ..inference.prompt_builder import build_prompt
 from ..pipeline.orchestrator import HarnessApplication
@@ -34,6 +34,7 @@ from ..semantic.contracts import ResolutionStatus
 from ..semantic.resolver import resolve_question
 from .cases import Case
 from .records import WarmupRecord
+from .reference import physical_reference_tables, reference_row_scope
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,8 +165,8 @@ class AblationHarness:
 
         never_execute=True can only restrict execution further. False grants
         nothing: the existing mandatory safety review remains the final gate.
-        Even NO_VALIDATOR currently retains role-table checks in that gate;
-        record any resulting safety stop rather than claiming DB enforcement.
+        NO_VALIDATOR bypasses application table entitlements while retaining
+        mandatory structural safety and the persona's database identity.
         """
         if type(case) is not Case or case.sql is None or type(profile) is not ModeProfile or type(never_execute) is not bool:
             raise ConfigurationError("Direct evaluation needs typed actual SQL source and profile.")
@@ -193,20 +194,27 @@ class AblationHarness:
             result = components.executor.execute(selected, candidate, mode=profile.mode, validation_ticket=ticket)
             regenerated = ticket.regenerated_sql if ticket is not None else result.executed_sql
             ticket = None
+            scope = None
+            if result.status is OutcomeStatus.ANSWERED:
+                try:
+                    if result.executed_sql is None:
+                        raise MissingDependencyError("An answered scope requires the actual executed SQL.")
+                    scope = reference_row_scope(
+                        physical_reference_tables(result.executed_sql, runtime.matrix), runtime.matrix, selected, profile.mode,
+                    )
+                except StarkT2SQLError as exc:
+                    # Discard rows whose scope cannot be attributed, but retain
+                    # the true execution record; this is not an unexecuted stop.
+                    result = replace(result, status=exc.status, stopping_layer=exc.stopping_layer,
+                        reason_code=exc.reason_code, columns=(), rows=(), truncated=False,
+                        diagnostics=result.diagnostics + (Diagnostic(exc.reason_code.value, str(exc)),))
             outcome = Outcome(
                 result.status, result.stopping_layer, result.reason_code, context, result.row_cap,
                 columns=result.columns, rows=result.rows, truncated=result.truncated,
                 extracted_sql=case.sql, regenerated_sql=regenerated, executed_sql=result.executed_sql,
                 timings=replace(result.timings, total_ms=(monotonic() - started) * 1000.0, validation_ms=validation_ms),
                 fingerprints=fingerprints, diagnostics=result.diagnostics,
-                row_scope=(
-                    RowScopeKind.ALL if profile.mode is ExecutionMode.UNCONTROLLED
-                    else (
-                        runtime.matrix.role(selected.business_role).tables["leave_balances"].row_scope
-                        if "leave_balances" in (result.executed_sql or case.sql or "").lower() and "leave_balances" in runtime.matrix.role(selected.business_role).tables
-                        else runtime.matrix.role(selected.business_role).tables["employees"].row_scope
-                    )
-                ),
+                row_scope=scope,
             )
         except Exception as exc:
             if isinstance(exc, StarkT2SQLError):
