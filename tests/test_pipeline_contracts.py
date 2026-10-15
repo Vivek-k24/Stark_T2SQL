@@ -41,12 +41,13 @@ def mocked_runtime(payroll_persona, matrix):
 def test_ambiguity_short_circuits_before_model_and_executor(monkeypatch, mocked_runtime, payroll_persona, fixture_date):
     module = import_module("stark_t2sql.pipeline.answer")
     monkeypatch.setattr(module,"resolve_question",lambda *args: VocabularyResolution(
-        ResolutionStatus.CLARIFICATION_REQUIRED,(),Clarification("Please choose the time basis.")))
+        ResolutionStatus.CLARIFICATION_REQUIRED,(),Clarification("Please choose the time basis.", ("Payment date", "Period end"))))
     def forbidden(*args,**kwargs): raise AssertionError("No generation/context/SQL on ambiguity")
     mocked_runtime.client.generate = forbidden
     monkeypatch.setattr(module,"build_context",forbidden)
     result = module.answer(payroll_persona,"headcount",fixture_date)
     assert result.status is OutcomeStatus.CLARIFICATION_REQUIRED
+    assert result.clarification.options == ("Payment date", "Period end")
     assert result.executed_sql is None and result.raw_output is None and not result.rows
     assert len(mocked_runtime.trace.calls) == 1
 

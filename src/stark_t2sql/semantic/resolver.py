@@ -1,9 +1,9 @@
 """Deterministic governed-vocabulary resolution before generation (FR-3/FR-7).
 
 This is a single-turn metadata transformation. It performs no SQL/model calls.
-Global ambiguity is decided before role projection, so hiding one meaning never
-causes the resolver to silently pick another. Public wording and alternatives
-contain only static questions and names from definitions permitted to the role.
+Longest matches come from the original vocabulary, so an unavailable explicit
+phrase cannot fall back to a shorter permitted meaning. Ambiguity is evaluated
+only among role-visible targets. This is context minimization, not enforcement.
 """
 
 from __future__ import annotations
@@ -42,6 +42,9 @@ def _clarification(
 ) -> VocabularyResolution:
     definitions = dict(visible.entities) | dict(visible.metrics)
     options = tuple(sorted({definitions[item].name for item in candidates if item in definitions}))
+    if not options:
+        # No permitted interpretation is not an answerable clarification.
+        return VocabularyResolution(ResolutionStatus.RESOLVED, (), None)
     return VocabularyResolution(
         status=ResolutionStatus.CLARIFICATION_REQUIRED,
         concept_ids=(),
@@ -52,12 +55,12 @@ def _clarification(
 def _finish_term(
     targets: frozenset[str], visible: SemanticCatalog
 ) -> VocabularyResolution:
-    visible_ids = set(visible.entities) | set(visible.metrics)
-    if len(targets) != 1 or not targets <= visible_ids:
-        return _clarification(set(targets), visible)
+    permitted = targets & (set(visible.entities) | set(visible.metrics))
+    if len(permitted) > 1:
+        return _clarification(set(permitted), visible)
     return VocabularyResolution(
         status=ResolutionStatus.RESOLVED,
-        concept_ids=tuple(sorted(targets)),
+        concept_ids=tuple(sorted(permitted)),
         clarification=None,
     )
 
@@ -66,13 +69,14 @@ def _finish_question(
     matched: tuple[frozenset[str], ...], visible: SemanticCatalog
 ) -> VocabularyResolution:
     visible_ids = set(visible.entities) | set(visible.metrics)
-    # Trigger clarification only on genuine multi-target lexical ambiguity (len(targets) > 1).
-    # Unambiguous out-of-entitlement concepts proceed to the model/validator/database layers.
-    ambiguous = [targets for targets in matched if len(targets) > 1]
+    # Retain global longest-phrase matching, then evaluate role-visible meanings.
+    # Zero visible targets assert no meaning; downstream guards own enforcement.
+    permitted = tuple(targets & visible_ids for targets in matched)
+    ambiguous = [targets for targets in permitted if len(targets) > 1]
     if ambiguous:
         ambiguous_candidates = set().union(*ambiguous)
         return _clarification(ambiguous_candidates, visible)
-    resolved_visible = set().union(*(targets for targets in matched if targets <= visible_ids)) if matched else set()
+    resolved_visible = set().union(*permitted) if permitted else set()
     return VocabularyResolution(
         status=ResolutionStatus.RESOLVED,
         concept_ids=tuple(sorted(resolved_visible)),
@@ -89,17 +93,16 @@ def resolve_term(
 ) -> VocabularyResolution:
     """Resolve one explicitly requested business term, or request clarification.
 
-    Unknown, unavailable or globally ambiguous terms receive the same static
-    question. The question never repeats a hidden name or exposes whether an
-    unavailable object exists. Engineering has its unique governed DIVISION
-    meaning; it cannot be inferred to be a department by convenience.
+    Unknown terms ask for available vocabulary when there is any. Unavailable
+    terms resolve with no asserted meaning; only multiple visible meanings ask
+    for disambiguation. Hidden names never enter clarification options.
     """
     if not isinstance(term, str) or not term.strip():
         raise InvalidRequestError("An explicit governed term must be nonempty text.")
     visible = filter_catalog_for_role(catalog, matrix, snapshot, business_role)
     targets = _lexicon(catalog).get(_normalize(term))
     if targets is None:
-        return _clarification(set(), visible)
+        return _clarification(set(visible.entities) | set(visible.metrics), visible)
     return _finish_term(targets, visible)
 
 
@@ -117,7 +120,7 @@ def resolve_question(
     The original question is never rewritten. Words outside governed vocabulary
     remain for the later generator: RESOLVED with no concept IDs asserts no
     business interpretation. Call resolve_term for an explicitly requested term
-    that must have a documented meaning; an unknown term then fails closed.
+    that must have a documented meaning; an unknown term asks for visible vocabulary.
     """
     if not isinstance(question, str) or not question.strip():
         raise InvalidRequestError("Governed resolution requires a nonempty business question.")

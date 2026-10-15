@@ -118,6 +118,8 @@ class CompiledContext:
             raise ConfigurationError("Compiled context requires a supported version and physical DDL.")
         if not isinstance(self.semantic_text, str):
             raise ConfigurationError("Compiled semantic context must be text.")
+        if ":as_of_date" in self.semantic_text.casefold():
+            raise ConfigurationError("Semantic date parameters must be bound before prompt assembly.")
         if self.prompt_version == 1 and (self.semantic_text or self.semantic_catalog_sha256 is not None):
             raise ConfigurationError("E2 version 1 cannot acquire semantic definitions.")
         for value, label in (
