@@ -1,16 +1,9 @@
-"""Streamlit entrypoint source for the E7 FULL-only persona interface.
-
-Authored without execution. The supplied standalone E0 HTML was inspected as
-text, and its visual language is translated into native Streamlit source. Future
-connected startup requires that source plus the separately governed E0 review
-and E1-E6 runtime prerequisites. No E0 source is altered or embedded here.
-The NFR-6 exception in the current authoring request permits source drafting
-only; it is not permission to run the application or its backend.
-"""
+"""Loopback UI with public offline health/progress and opt-in connected views."""
 
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
 
 
@@ -20,6 +13,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 SOURCE_ROOT = PROJECT_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from stark_t2sql.ui.ui_state import initialize_state, require_visual_baseline, session_is_busy
 from stark_t2sql.ui.views import (
@@ -51,6 +46,13 @@ def main() -> None:
         st.stop()
 
     navigation = render_shell()
+    from stark_t2sql.ui.project_status import render_health, render_demo
+    if navigation == "Health & Status":
+        render_health()
+        return
+    if navigation == "Offline demo":
+        render_demo()
+        return
     visual_source_available = False
     try:
         require_visual_baseline(PROJECT_ROOT)
@@ -76,6 +78,11 @@ def main() -> None:
     if not visual_source_available:
         st.title(navigation)
         st.info("Architecture and Progress remain available as read-only development planning.")
+        return
+
+    if os.environ.get("STARK_ENABLE_CONNECTED_UI") != "1":
+        st.title(navigation)
+        st.warning("BLOCKED · Connected SQL execution is not activated. Use Architecture, Progress or the SIMULATED offline demo.")
         return
 
     try:

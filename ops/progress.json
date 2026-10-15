@@ -1,0 +1,103 @@
+{
+  "automation": {
+    "reason": "Opt-in task and real agent CLI/auth/sandbox smoke tests required",
+    "state": "BLOCKED"
+  },
+  "base": "gemini/full-remediation-review",
+  "frd": "1.8",
+  "github_base_sha": "3855429425020c3619e24fabc64d45d988828009",
+  "interim": {
+    "gate": "INT-01",
+    "head_sha": "b86a3234ef426dd768b76bd044fa24756f741d74",
+    "issue": 15,
+    "issue_state": "open",
+    "issue_title": "INT-01 | Automated agent handoffs and live UI activation before R04",
+    "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/15",
+    "pr": 16,
+    "state": "VERIFIED — AWAITING MERGE",
+    "tests": {
+      "failed": 0,
+      "passed": 514,
+      "scope": "offline",
+      "skipped": 177
+    },
+    "url": "https://github.com/Vivek-k24/Stark_T2SQL/pull/16"
+  },
+  "milestones": [
+    {
+      "evidence_sha256": "cdaa696c672932bf7cf7ec854480b3e286522000ac1c759b8ba00e7629cbcb6e",
+      "evidence_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/51058398182e65a234f5e7da2b27a4ce763436ec/Codex_work_log.md",
+      "gate": "R01",
+      "issue": 3,
+      "issue_state": "closed",
+      "issue_title": "R01 | Authoritative SQLCoder template and runtime bootstrap (ISS-14)",
+      "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/3",
+      "live_postgresql": "UNVERIFIED",
+      "merge_sha": "51058398182e65a234f5e7da2b27a4ce763436ec",
+      "merged_at": "2026-10-14T17:50:16Z",
+      "merged_by": "Vivek-k24",
+      "pr": 12,
+      "review_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/51058398182e65a234f5e7da2b27a4ce763436ec/Antigravity_Design_Review.md",
+      "review_verdict": "FINAL REVIEW NOT VERSIONED; owner merged",
+      "state": "MERGED",
+      "tests": {
+        "failed": 0,
+        "passed": 260,
+        "scope": "offline",
+        "skipped": 177
+      }
+    },
+    {
+      "evidence_sha256": "4b94b3bb172a81c24783cb45cb52722bb1fb936a838095471d93aa060abb434b",
+      "evidence_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/b8d149d7d58b87a35b251980814467cbca61661d/Antigravity_R02_Design_Review.md",
+      "gate": "R02",
+      "issue": 4,
+      "issue_state": "closed",
+      "issue_title": "R02 | Deterministic Faker fixture and provenance (ISS-16, ISS-14 assets)",
+      "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/4",
+      "live_postgresql": "UNVERIFIED",
+      "merge_sha": "b8d149d7d58b87a35b251980814467cbca61661d",
+      "merged_at": "2026-10-14T19:22:38Z",
+      "merged_by": "Vivek-k24",
+      "pr": 13,
+      "review_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/b8d149d7d58b87a35b251980814467cbca61661d/Antigravity_R02_Design_Review.md",
+      "review_verdict": "APPROVE",
+      "state": "MERGED",
+      "tests": {
+        "failed": 0,
+        "passed": 326,
+        "scope": "offline",
+        "skipped": 178
+      }
+    },
+    {
+      "evidence_sha256": "042ce8b2c009161fc95778de579060ddbd2c79ce0811ace343343daba08b668a",
+      "evidence_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/3855429425020c3619e24fabc64d45d988828009/Antigravity_R03_Review.md",
+      "gate": "R03",
+      "issue": 5,
+      "issue_state": "open",
+      "issue_title": "R03 | PostgreSQL ACL/RLS startup and clone isolation (ISS-01/02/04)",
+      "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/5",
+      "live_postgresql": "UNVERIFIED",
+      "merge_sha": "3855429425020c3619e24fabc64d45d988828009",
+      "merged_at": "2026-10-14T20:52:43Z",
+      "merged_by": "Vivek-k24",
+      "pr": 14,
+      "review_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/3855429425020c3619e24fabc64d45d988828009/Antigravity_R03_Review.md",
+      "review_verdict": "APPROVE",
+      "state": "MERGED",
+      "tests": {
+        "failed": 0,
+        "passed": 463,
+        "scope": "offline",
+        "skipped": 177
+      }
+    }
+  ],
+  "query_execution": {
+    "reason": "Secured PostgreSQL/model/parser integration has not been executed",
+    "state": "BLOCKED"
+  },
+  "repository": "Vivek-k24/Stark_T2SQL",
+  "schema_version": 1
+}

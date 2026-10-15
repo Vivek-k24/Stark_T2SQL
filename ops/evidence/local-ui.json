@@ -1,0 +1,8 @@
+{
+  "observed_at": "2026-10-14T23:28:04.023563+00:00",
+  "state": "RUNNING at observation",
+  "url": "http://127.0.0.1:8501",
+  "health": "ok",
+  "connected_sql": "DISABLED",
+  "scope": "offline public health/architecture/progress/demo only"
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "STARK_HANDOFF_V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["gate", "phase", "status", "subject_sha", "implementation_ready", "tests"],
+  "properties": {
+    "gate": {"enum": ["INT01", "R04", "R05", "R06", "R07", "R08", "R09"]},
+    "phase": {"enum": ["design", "implementation", "verification"]},
+    "status": {"enum": ["APPROVE", "REVISE", "BLOCKED", "IMPLEMENTATION_PUSHED", "VERIFIED_APPROVE", "VERIFIED_REVISE", "VERIFIED_BLOCKED"]},
+    "subject_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "implementation_ready": {"type": "boolean"},
+    "tests": {
+      "type": "object", "additionalProperties": false,
+      "required": ["passed", "failed", "skipped", "scope"],
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0},
+        "scope": {"enum": ["offline", "not_run"]}
+      }
+    }
+  }
+}

@@ -648,8 +648,10 @@ def render_architecture() -> None:
     import streamlit as st
 
     st.subheader("Six-stage runtime architecture")
+    from .project_status import render_evidence
+    render_evidence()
     st.caption(
-        "Public developer planning metadata. These source drafts have no runtime evidence; "
+        "Public developer planning metadata. Source stages are distinct from verified remediation gates; "
         "stage selection grants no backend capability. Persona identity is simulated, not authentication."
     )
     st.caption(
@@ -720,11 +722,13 @@ def render_progress() -> None:
     import streamlit as st
 
     st.subheader("Implementation progress explorer")
+    from .project_status import render_evidence
+    render_evidence()
     st.caption("Read-only FRD 1.8 Section 7 hierarchy. Labels describe authoring scope only.")
     st.info(
         "Not started: work or evidence remains absent. Implemented in source: a draft exists. "
         "Future verification: callable source awaits later runtime assessment. "
-        "No epic exit condition is met by source authorship, and no tests or services were run."
+        "No epic exit condition is met by source authorship. Actual gate test evidence is shown above."
     )
     st.warning(
         "E0 visual approval and E1 environment/fixture measurements remain pending. "

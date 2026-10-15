@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "repository": "Vivek-k24/Stark_T2SQL",
+  "enabled": false,
+  "mode": "status_only",
+  "gate": "INT01",
+  "design_sha": null,
+  "approved_paths": [],
+  "trusted_authors": ["Vivek-k24"],
+  "state_directory": "REPLACE_WITH_ABSOLUTE_PRIVATE_STATE_DIRECTORY",
+  "python": "REPLACE_WITH_ABSOLUTE_PYTHON_EXECUTABLE",
+  "codex_executable": null,
+  "antigravity_executable": null,
+  "cli_smoke_evidence": null,
+  "postmerge_enabled": true
+}
