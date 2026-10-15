@@ -28,7 +28,7 @@ old handoff prompts where they conflict.
    Include `ops/progress.json` and the HTML in the same gate PR.
    **Additionally, at EVERY Antigravity implementation-verification handoff**,
    update the owner's browser copy at
-   `H:\\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html` from that reviewed
+   `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html` from that reviewed
    canonical HTML. This Windows path is separate from the repository's
    single-extension `.html` file. Before overwriting it, protect any local
    changes with a timestamped backup outside the repository and compare content;
