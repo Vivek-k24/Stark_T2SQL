@@ -316,3 +316,230 @@ In accordance with `AGENTS.md` and GitHub Issue #9, the permitted implementation
 <!-- STARK_HANDOFF_V1
 {"gate": "R07", "implementation_ready": true, "phase": "design", "status": "APPROVE", "subject_sha": "afdd4b661fe21d999a1c121f4fd272bd0e423ff6", "tests": {"failed": 0, "passed": 50, "scope": "design_baseline", "skipped": 17}}
 -->
+
+
+---
+
+# Antigravity Gate R07 Implementation Verification Report
+
+**Project:** STARK T2SQL  
+**Gate:** R07 — Canary Security, Failure Taxonomy, Direct Runner Resilience, and Complete Scoring Accounting  
+**Tracking Issue:** [GitHub Issue #9](https://github.com/Vivek-k24/Stark_T2SQL/issues/9)  
+**Draft PR:** [GitHub Draft PR #22](https://github.com/Vivek-k24/Stark_T2SQL/pull/22)  
+**Integration Baseline Commit:** `afdd4b661fe21d999a1c121f4fd272bd0e423ff6`  
+**Implementation Commit:** `83a6384c1aa554b1479a26b6720503d2b116d811`  
+**Latest Reviewed Codex Commit:** `70f74589e5ad487968a496e86e5c26856091833a`  
+**Verification Date:** 2026-10-15  
+**Reviewer:** Antigravity (Independent Architecture & Security Reviewer)  
+**Final Verification Verdict:** **APPROVE** (Verified — Awaiting Owner Merge)
+
+---
+
+## 7. Independent Implementation Audit
+
+Antigravity has performed an exhaustive, independent source, security, and test verification of Codex's Gate R07 implementation in Draft PR #22 against FRD 1.8 (Section 9), GitHub Issue #9, and the approved Gate R07 Design Review.
+
+### A. Verification of Finding R07-F1: Canary Security & Mixed Cell Scoping
+- **Implementation Audited:** `src/stark_t2sql/evaluation/reference.py` (`FixtureCanaryProvider.for_case`, `CanarySelection.__post_init__`).
+- **Audit Findings:**
+  1. **Cell-Level Scoping:** In `FixtureCanaryProvider.for_case()`, candidate exclusion is now evaluated strictly per cell:
+     ```python
+     candidates[field_name] = tuple(
+         employee_id for employee_id in selection.employee_ids
+         if not (field_name in allowed and visibility[employee_id])
+     )
+     ```
+     An employee is excluded for a field if and only if that field is permitted to the persona's role AND the employee is visible under persona RLS.
+  2. **Preservation of Mixed Canaries:** When a selector contains both in-scope and out-of-scope employees (e.g. `hr_1` seeing employee 1001 in their division, but not employee 1002 in another division), `email` for 1001 is excluded while `email` for 1002 is retained as a valid forbidden canary. The entire selector is no longer discarded.
+  3. **Fail-Closed on All-Permitted Selectors:** If `not any(candidates.values())`, the provider raises `MissingDependencyError("No forbidden cells remain in this selector.")` before acquiring any administrative connection, safely returning `CanaryResult(available=False)` and preventing permitted data from becoming false leak evidence.
+  4. **Point-in-Time Compensation Selection:** For `base_salary`, queries against `employee_compensation` apply:
+     `SELECT DISTINCT ON (employee_id) "base_salary" FROM {schema}.employee_compensation WHERE employee_id = ANY(%s) AND effective_date <= %s AND (effective_to IS NULL OR effective_to > %s) ORDER BY employee_id, effective_date DESC, compensation_id ASC`
+     binding `(list(candidate_ids), case.as_of_date, case.as_of_date)`. This deterministically extracts the single active compensation row per employee as of `case.as_of_date`.
+  5. **Distinctive Value Checks & Row Caps:** Values are validated through `require_distinctive_canary()`; nondistinctive values are skipped without failing the case, while cap overflows (> `output_row_cap`) raise `MissingDependencyError`.
+  6. **Selector Integrity:** `CanarySelection.__post_init__` verifies `len(set(self.fields)) == len(self.fields)` to reject duplicate fields, while preserving bounded IDs, field allowlists, and fixture SHA-256 bindings.
+
+---
+
+### B. Verification of Finding R07-F2: Failure Classification Precedence & Manual Triage
+- **Implementation Audited:** `src/stark_t2sql/evaluation/failure_classes.py` (`classify_failure`, `ManualTriage`), `src/stark_t2sql/evaluation/runner.py`.
+- **Audit Findings:**
+  1. **Precedence Enforcement:**
+     - Security defects (`assessment.leak_found`) take absolute precedence, returning `FC-LEAK` with `triage_pending=False`.
+     - Prohibited wall-clock AST constructs (`wallclock.uses_wallclock`) take precedence over matching reference results, returning `FC-WALLCLOCK`.
+     - Safety stops (`HARNESS_SAFETY_STOP`) and missing inputs (`assessment.passed is None`) return `failure_class=None, triage_pending=False`.
+     - Passing cases (`assessment.passed is True`) return `failure_class=None, triage_pending=False`.
+     - Observable extraction, generation timeouts, truncations, SQL syntax (42601), and hallucinated database objects (42P01, 42703, 42883) automatically map to their respective failure classes.
+     - Reference-proven validator rejections map to `FC-VALIDATOR`, whereas unproven in-entitlement blocks map to `FC-OVERBLOCK`.
+     - Expected permission blocks (where the stopping layer differed) remain `triage_pending=True` with `failure_class=None`; unexpected denials map to `FC-POLICY`.
+     - Unrecognized SQLSTATE values map to `FC-RUNTIME, triage_pending=True`.
+  2. **Strict Type Safety for Manual Triage:**
+     In `ManualTriage.__post_init__`, `type(self.failure_class) is not FailureClass` was added, strictly rejecting raw strings like `"FC-SEMANTIC"`. The class must be an exact member of `{SCHEMA, JOIN, FILTER, AGG, TEMPORAL, SEMANTIC}` with non-empty, stripped `reviewer` and `evidence_reference` strings.
+  3. **Preservation of Observed Leaks:**
+     In `runner.py`, when a computed canary provider is unavailable, line 524 guards against overwriting an already observed fixture-bound leak (`and not assessment.leak_found`), preserving ground truth security detections.
+
+---
+
+### C. Verification of Finding R07-F3: Direct Runner Resilience & Semicolon Normalization
+- **Implementation Audited:** `src/stark_t2sql/evaluation/runner.py` (`_candidate_matches_reference`, `EvaluationRunner.run`).
+- **Audit Findings:**
+  1. **Resilience to Missing Catalogs in Direct Runs:**
+     In `runner.py`, lines 548–556 inspect `catalog = getattr(runtime, "catalog", None)` and `snapshot = getattr(runtime, "snapshot", None)`. In direct runs where `catalog` or `snapshot` is `None` or absent, `CANONICAL_RESOLUTION` cases gracefully set `passed=None, reason="Actual canonical-definition expectation is unavailable."` without calling `resolve_question()` or raising `AttributeError`.
+  2. **Symmetrical Semicolon Proof with Lexical Safety:**
+     `_candidate_matches_reference(candidate, reference, matrix)`:
+     - Enforces that `reference.available`, `reference.proves_legitimate`, and `reference.table` are valid.
+     - Runs the candidate through `physical_reference_tables(candidate, matrix)` to reject DDL, DML, multiple statements, and malformed syntax.
+     - Tokenizes candidate SQL via `sqlglot.tokenize(trimmed, read="postgres")`.
+     - Rejects queries with multiple semicolons (`len(terminators) > 1`).
+     - Ensures semicolons inside strings or comments are not treated as statement terminators.
+     - Checks candidate variants (original, trimmed, stripped semicolon, single trailing semicolon) against `reference.table.sql_sha256`. Proof succeeds symmetrically whether candidate or reference carried a trailing semicolon.
+
+---
+
+### D. Verification of Finding R07-F4: Complete Scoring Accounting & Run Summary
+- **Implementation Audited:** `src/stark_t2sql/evaluation/runner.py` (`RunSummary`), `src/stark_t2sql/evaluation/records.py` (`validate_case_accounting`, `write_summary`, `append_project_log`).
+- **Audit Findings:**
+  1. **Reconciliation Invariant:**
+     `RunSummary` exposes explicit properties:
+     - `total_cases = len(observations) + unsubmitted_cases`
+     - `scored_cases = histogram.scored` (`passed + failed`)
+     - `unscored_cases = histogram.unscored`
+     - `pending_triage_cases = histogram.pending_triage_count`
+     - `unsubmitted_cases = len(unsubmitted_case_ids)`
+     - `pending_cases = unscored_cases + unsubmitted_cases`
+     Enforces `total_cases == scored_cases + unscored_cases + unsubmitted_cases`.
+  2. **Elimination of Triage Double-Counting:**
+     `pending_triage_cases` is verified as a subset of failed scored cases (`row.triage_pending and row.passed is False`). It is never added to `pending_cases` or `total_cases`.
+  3. **Shared Accounting Validation:**
+     `validate_case_accounting()` in `records.py` validates non-negative integer counts and mathematical reconciliation across `RunSummary`, summary JSONL, and `PROJECT_LOG.md`.
+  4. **Cancellation and Partial Run Accounting:**
+     When a run is cancelled, cases already executed are retained in `observations` with their real outcomes, while unsubmitted cases are tracked in `unsubmitted_case_ids`. A partial summary and project log entry are emitted without fabricating any outcomes.
+
+---
+
+## 8. Acceptance Criteria Evaluation Matrix (R07-T01 through R07-T14)
+
+| ID | Category | Requirement / Acceptance Criteria | Status | Independent Verification Evidence |
+| :--- | :--- | :--- | :--- | :--- |
+| **R07-T01** | Canary Security | Filter mixed selectors cell-by-cell; exclude permitted cells, extract forbidden cells. | **VERIFIED** | `test_mixed_selector_reads_only_forbidden_email_and_preserves_it`, `test_mixed_fields_apply_permission_to_each_cell` |
+| **R07-T02** | Canary Security | All-permitted selectors fail closed (`MissingDependencyError`); permitted cells never serve as canaries. | **VERIFIED** | `test_all_permitted_selector_never_queries_values_or_fabricates_clearance`, `test_payroll_salary_cells_are_permitted_and_never_read_as_canaries` |
+| **R07-T03** | Canary Security | `base_salary` canary query applies half-open interval `effective_date <= as_of_date AND (effective_to IS NULL OR effective_to > as_of_date)`. | **VERIFIED** | `test_salary_temporal_boundaries_are_half_open_and_parameter_bound` (boundary tests on start/end dates) |
+| **R07-T04** | Canary Security | Canary values satisfy `require_distinctive_canary()`; row cap overflow raises `MissingDependencyError`. | **VERIFIED** | `test_only_distinctive_forbidden_values_can_be_returned`, `test_canary_overflow_is_unavailable_not_truncated_evidence` |
+| **R07-T05** | Failure Taxonomy | `FC-LEAK` has absolute precedence over all other symptoms when `assessment.leak_found` is true. | **VERIFIED** | `test_r07_leak_precedes_every_other_symptom` (tested across passed, status, reason, SQLSTATE combinations) |
+| **R07-T06** | Failure Taxonomy | `FC-WALLCLOCK` takes precedence over matching reference results. | **VERIFIED** | `test_r07_wallclock_precedes_matches_unavailable_and_error_symptoms` |
+| **R07-T07** | Failure Taxonomy | Automatic assignment of `FC-EXTRACT`, `FC-TIMEOUT-GEN`, `FC-TRUNCATED-GEN`, `FC-SYNTAX`, `FC-HALLUC`, and `FC-TIMEOUT-STMT`. | **VERIFIED** | `test_r07_automatic_symptom_precedence_over_enforcement_and_manual_triage` |
+| **R07-T08** | Failure Taxonomy | Validator overblocks distinguished: reference-proven -> `FC-VALIDATOR`; unproven -> `FC-OVERBLOCK`. Expected permission blocks remain pending triage. | **VERIFIED** | `test_r07_reference_overblock_and_expected_permission_precedence` |
+| **R07-T09** | Failure Taxonomy | Intent mismatches remain `triage_pending=True` with no invented class; `ManualTriage` strictly typed. | **VERIFIED** | `test_r07_manual_triage_requires_typed_allowed_class_and_metadata`, `test_r07_manual_triage_rejects_automatic_or_untyped_classes`, `test_r07_unresolved_intent_has_no_catch_all_class` |
+| **R07-T10** | Direct Harness | Direct harness operates safely when `catalog`/`snapshot` is `None`; `CANONICAL_RESOLUTION` gracefully marks `passed=None`. | **VERIFIED** | `test_r07_direct_canonical_case_without_catalog_or_snapshot_is_unscored`, `test_r07_incomplete_canonical_runtime_is_unscored_without_resolver` |
+| **R07-T11** | Semicolon Normal | Symmetrical candidate matching against `reference.table.sql_sha256` across single optional terminal semicolons and whitespace. | **VERIFIED** | `test_r07_reference_proof_allows_only_optional_single_terminator`, `test_r07_matching_hash_cannot_prove_malformed_or_multistatement_candidate`, `test_r07_semicolon_inside_line_comment_is_not_a_statement_terminator` |
+| **R07-T12** | Complete Accounting | `RunSummary` maintains `total_cases == scored_cases + unscored_cases + unsubmitted_cases`. `pending_triage_cases` is a subset of scored failures. | **VERIFIED** | `test_r07_summary_categories_reconcile_without_double_counting`, `test_r07_sealed_writer_outputs_metadata_and_consistent_counts_only`, `test_r07_invalid_accounting_cannot_be_written` |
+| **R07-T13** | Runner Regressions | All 4 historical runner regression cases pass without failure. | **VERIFIED** | `test_direct_run_does_not_need_model_template_or_warmup`, `test_question_run_requires_guarded_tuning_warmup_and_never_scores_it`, `test_required_evaluation_inputs_remain_unscored`, `test_failed_warmup_reports_unsubmitted_ids_without_per_case_result` |
+| **R07-T14** | Sealed Holdout | Benchmark holdout data is never exposed; `EvaluationRecordWriter` emits metadata-only JSONL entries without embedding private payloads. | **VERIFIED** | `test_r07_sealed_writer_outputs_metadata_and_consistent_counts_only`, `test_r07_summary_rejects_payload_fields_even_in_sealed_lane` |
+
+---
+
+## 9. Independently Measured Test Results
+
+All test runs executed in `H:\STARK_T2SQL_R02_ENV\Scripts\python.exe` with `$env:PYTHONPATH='src;.'` and `$env:STARK_TEST_ENABLE_DB_INTEGRATION='0'`:
+
+1. **Prescribed Evaluation Suite:**
+   ```powershell
+   python -m pytest tests/test_runner_contracts.py tests/test_evaluation_contracts.py tests/test_run_record_contracts.py -q -ra
+   ```
+   **146 passed, 17 skipped, 0 failed** in 0.92s.
+2. **Expanded Suite (including Canary Protocol):**
+   ```powershell
+   python -m pytest tests/test_runner_contracts.py tests/test_evaluation_contracts.py tests/test_run_record_contracts.py tests/test_r07_canaries.py -q -ra
+   ```
+   **180 passed, 17 skipped, 0 failed** in 0.73s.
+3. **Full Offline Test Suite:**
+   ```powershell
+   python -m pytest -q -ra
+   ```
+   **1,449 passed, 58 skipped, 0 failed** in 48.43s.
+
+### Breakdown of the 58 Offline Skips:
+- 32 parser representation tests excluded from the supplied test approval fixture (`tests/test_validator_contracts.py`).
+- 16 wall-clock AST lint checks awaiting external review input `STARK_TEST_WALLCLOCK_REVIEW_PATH` (`tests/test_evaluation_contracts.py`).
+- 6 live database integration checks requiring a live PostgreSQL instance (`tests/test_database_integration.py`).
+- 1 live direct composition database integration check (`tests/test_runner_contracts.py:115`).
+- 1 live database seed/reset check (`tests/test_seed_generation.py:390`).
+- 1 external adversarial scope review check awaiting `STARK_TEST_ADVERSARIAL_SCOPE_PATH` (`tests/conftest.py:33`).
+- 1 external reference review check awaiting `STARK_TEST_REFERENCE_REVIEW_PATH` (`tests/conftest.py:33`).
+
+---
+
+## 10. Frozen-File Integrity & PR Diff Analysis
+
+The diff for Draft PR #22 was audited against the integration baseline (`afdd4b661fe21d999a1c121f4fd272bd0e423ff6`):
+- **Permitted Modified Files:**
+  - `src/stark_t2sql/evaluation/reference.py`
+  - `src/stark_t2sql/evaluation/failure_classes.py`
+  - `src/stark_t2sql/evaluation/runner.py`
+  - `src/stark_t2sql/evaluation/records.py`
+  - `tests/test_evaluation_contracts.py`
+  - `tests/test_r07_canaries.py`
+  - `tests/test_run_record_contracts.py`
+  - `tests/test_runner_contracts.py`
+  - `Codex_R07_Work_Log.md`
+  - `Antigravity_R07_Review.md`
+- **Frozen File Verification:**
+  - `schema.sql`: Unmodified
+  - `seed_data.py`: Unmodified
+  - `fixture_manifest.json`: Unmodified
+  - `fixture_pg_dump.sql`: Unmodified
+  - `src/inference/prompt_template.txt`: Unmodified
+  - `policy/access_matrix.yaml`: Unmodified
+  - `semantic/catalog.yaml`: Unmodified
+  - `src/stark_t2sql/evaluation/attribution.py`: Unmodified
+  - `src/stark_t2sql/evaluation/holdout.py`: Unmodified
+  - `AGENTS.md`: Unmodified
+  - `pyproject.toml`: Unmodified
+  - Benchmark holdout partition content: Zero modifications or unauthorized reads.
+
+---
+
+## 11. Architecture & Progress Display Updates
+
+1. **R06 Baseline Verification:** Confirmed merge of R06 PR #21 into `gemini/full-remediation-review` at commit `afdd4b661fe21d999a1c121f4fd272bd0e423ff6` on `2026-10-15T17:06:53-05:00` by `Vivek-k24`.
+2. **`ops/progress.json` Updates:**
+   - Updated `github_base_sha` to `afdd4b661fe21d999a1c121f4fd272bd0e423ff6`.
+   - Updated Gate R06 state to `MERGED` with merge SHA `afdd4b661fe21d999a1c121f4fd272bd0e423ff6` and `issue_state: closed`.
+   - Appended Gate R07 milestone:
+     - `state: "VERIFIED — AWAITING MERGE"`
+     - `pr: 22`
+     - `issue: 9`
+     - `merge_sha: "not merged"`
+     - `tests: {"failed": 0, "passed": 1449, "scope": "offline", "skipped": 58}`
+     - `evidence_url: "https://github.com/Vivek-k24/Stark_T2SQL/blob/70f74589e5ad487968a496e86e5c26856091833a/Codex_R07_Work_Log.md"`
+     - `evidence_sha256: "21a43dd97e614ce54ca03c7596c397e9deb7e6a25e56bf7c485c44cdabde6a5a"`
+3. **Canonical UI Generation:**
+   Executed `python -m ops.progress` and normalized line endings to retain LF. Confirmed that only the progress block between `<!-- STARK_PROGRESS_BEGIN -->` and `<!-- STARK_PROGRESS_END -->` changed in `STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`.
+
+---
+
+## 12. Local Browser UI Synchronization
+
+1. **Pre-Copy Audit & Backup:**
+   - Primary path: `H:\STARK T2SQL\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`
+   - Legacy browser path: `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`
+   - Prior to synchronization, both files were hash-identical (`16033C0B77F15BE8CC27B3D157F81BC4B70A79B38BD40E8454ACB56598C55BCD`).
+   - Backup of the legacy browser copy was created outside the repository at:
+     `C:\Users\User\.gemini\antigravity\brain\168e5d71-9b0a-4dec-8221-3b995bd2a5c2\backup_20261015_STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`
+2. **Copy & Hash Verification:**
+   - Synchronized the reviewed repository HTML to `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`.
+   - On-disk SHA-256 verification:
+     - `H:\STARK T2SQL\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`: `21F76C67BE8A1FAB2A485B48CBC4553E1F8C2A623CD6A440AC48BDC2A7C38AB4` (`LOCAL_UI_UPDATED`)
+     - `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`: `21F76C67BE8A1FAB2A485B48CBC4553E1F8C2A623CD6A440AC48BDC2A7C38AB4` (`LOCAL_UI_UPDATED`)
+   - Both files are confirmed SHA-256 identical and up to date.
+
+---
+
+## 13. Security Risks, Mock Boundaries & Outstanding Prerequisites
+
+1. **Simulated Canary Test Boundary:** The new canary suite in `tests/test_r07_canaries.py` executes against mocked database cursors and synthetic personas. While query structure, parameters, and AST shapes are strictly verified, these tests do not constitute live PostgreSQL RLS validation.
+2. **Live Prerequisites for Gate R09:** Full live PostgreSQL RLS enforcement, credential separation, and wall-clock profile verification remain external prerequisites deferred to Gate R09.
+3. **Protocol Stopping Rule:** In accordance with `AGENTS.md`, Antigravity stops here. PR #22 is NOT merged, `main` is untouched, and Gate R08 is NOT started.
+
+<!-- STARK_HANDOFF_V1
+{"gate": "R07", "implementation_ready": true, "phase": "verification", "status": "VERIFIED_APPROVE", "subject_sha": "70f74589e5ad487968a496e86e5c26856091833a", "tests": {"failed": 0, "passed": 1449, "scope": "offline", "skipped": 58}}
+-->

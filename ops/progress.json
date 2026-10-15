@@ -1,7 +1,7 @@
 {
   "base": "gemini/full-remediation-review",
   "frd": "1.8",
-  "github_base_sha": "4e50ff9b0087014738dd88b46b457c949f3830d0",
+  "github_base_sha": "afdd4b661fe21d999a1c121f4fd272bd0e423ff6",
   "interim": {
     "gate": "INT-01",
     "issue": 15,
@@ -131,18 +131,41 @@
       "evidence_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/0f0c6d318f23720277227794732e0f9a353c8210/Codex_R06_Work_Log.md",
       "gate": "R06",
       "issue": 8,
-      "issue_state": "open",
+      "issue_state": "closed",
       "issue_title": "R06 | Reference oracle, comparator, and per-table scope (ISS-07/08/10)",
       "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/8",
       "live_postgresql": "UNVERIFIED",
-      "merge_sha": "not merged",
+      "merge_sha": "afdd4b661fe21d999a1c121f4fd272bd0e423ff6",
+      "merged_at": "2026-10-15T22:06:53Z",
+      "merged_by": "Vivek-k24",
       "pr": 21,
       "review_url": "https://github.com/Vivek-k24/Stark_T2SQL/pull/21",
+      "review_verdict": "APPROVE",
+      "state": "MERGED",
+      "tests": {
+        "failed": 0,
+        "passed": 1319,
+        "scope": "offline",
+        "skipped": 58
+      }
+    },
+    {
+      "evidence_sha256": "21a43dd97e614ce54ca03c7596c397e9deb7e6a25e56bf7c485c44cdabde6a5a",
+      "evidence_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/70f74589e5ad487968a496e86e5c26856091833a/Codex_R07_Work_Log.md",
+      "gate": "R07",
+      "issue": 9,
+      "issue_state": "open",
+      "issue_title": "R07 | Canary, failure taxonomy, and complete scoring (ISS-11/15/19/20)",
+      "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/9",
+      "live_postgresql": "UNVERIFIED",
+      "merge_sha": "not merged",
+      "pr": 22,
+      "review_url": "https://github.com/Vivek-k24/Stark_T2SQL/pull/22",
       "review_verdict": "APPROVE",
       "state": "VERIFIED — AWAITING MERGE",
       "tests": {
         "failed": 0,
-        "passed": 1319,
+        "passed": 1449,
         "scope": "offline",
         "skipped": 58
       }
