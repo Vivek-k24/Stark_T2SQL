@@ -1,38 +1,39 @@
-"""Public local project health; never imports a DB/model client or reads secrets."""
+"""Read-only local health and manually maintained public progress."""
 from importlib.util import find_spec
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 
+
 def cached_progress(root=ROOT):
-    # ops is a repo-local control plane, deliberately separate from HR pipeline.
     from ops.progress import load
     return load(root)
 
+
 def health(root=ROOT):
-    try: cached_progress(root); progress = "LOCAL READY"
-    except Exception: progress = "BLOCKED"
-    return {"Architecture & Progress":progress,
-            "Streamlit dependency":"LOCAL READY" if find_spec("streamlit") else "BLOCKED",
-            "Scripted playground":"DEMO",
-            "Agent handoffs":"BLOCKED — requires CLI/auth/sandbox checks and opt-in scheduled task",
-            "Secured SQLCoder ↔ PostgreSQL":"BLOCKED — live end-to-end acceptance not established"}
+    try:
+        cached_progress(root)
+        progress = "LOCAL READY"
+    except Exception:
+        progress = "BLOCKED"
+    return {
+        "Architecture & Progress": progress,
+        "Streamlit dependency": "LOCAL READY" if find_spec("streamlit") else "BLOCKED",
+        "Scripted playground": "DEMO",
+        "Secured SQLCoder ↔ PostgreSQL": "BLOCKED — live end-to-end acceptance not established",
+    }
+
 
 def render_evidence(root=ROOT):
     import streamlit as st
-    st.subheader("GitHub-backed remediation progress")
-    try: data = cached_progress(root)
+    st.subheader("Reviewed remediation progress")
+    try:
+        data = cached_progress(root)
     except Exception:
-        st.warning("BLOCKED · The local public evidence cache is missing or invalid.")
+        st.warning("BLOCKED · The local progress record is missing or invalid.")
         return
-    if st.button("Refresh public GitHub evidence", key="public_progress_refresh"):
-        try:
-            from ops.github import GitHub
-            from ops.progress import build
-            data = build(GitHub())
-            st.success("LIVE · Public GitHub evidence refreshed for this view.")
-        except Exception: st.warning("GitHub refresh unavailable. Showing cached public evidence.")
-    st.caption("FRD 1.8 · LOCAL READY · cached evidence works offline. No HR data is sent to GitHub.")
+    st.caption("FRD 1.8 · Manually maintained from versioned GitHub evidence; "
+               "this view works offline and never dispatches agents.")
     for item in data["milestones"]:
         with st.container(border=True):
             st.markdown(f'**{item["gate"]} · {item["state"]} · PR #{item["pr"]}**')
@@ -42,8 +43,9 @@ def render_evidence(root=ROOT):
             st.caption("Independent review: " + item["review_verdict"])
             st.link_button("Read versioned evidence", item["evidence_url"])
     st.info("INT-01 · " + data["interim"]["state"])
-    st.warning("Agent automation: " + data["automation"]["state"] + ". " + data["automation"]["reason"])
-    st.caption("Live PostgreSQL/model acceptance remains unverified. Remediation merges do not mark whole FRD epics complete.")
+    st.caption("Actual SQLCoder/PostgreSQL integration remains unverified. "
+               "Remediation merges do not mark whole FRD epics complete.")
+
 
 def render_health():
     import streamlit as st
@@ -53,6 +55,7 @@ def render_health():
         st.markdown(f"**{feature}:** {status}")
     st.info("Architecture, Progress and the offline demo work without database or model credentials.")
     st.caption("SIMULATED examples never submit SQL. Connected execution requires separately reviewed resources and explicit operator opt-in.")
+
 
 def render_demo(root=ROOT):
     import streamlit as st

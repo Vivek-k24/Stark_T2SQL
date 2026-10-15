@@ -44,7 +44,7 @@ def main():
             browser.close()
         result={"health_endpoint":"PASSED","browser":"Microsoft Edge headless",
                 "browser_views":["Health & Status","Architecture","Progress"],"bind":"127.0.0.1",
-                "connected_sql":"NOT_EXECUTED","agent_sessions":0,"server_after_smoke":"STOPPED"}
+                "connected_sql":"NOT_EXECUTED","server_after_smoke":"STOPPED"}
         (output/"ui-smoke.json").write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
         print(json.dumps(result))
     finally:
