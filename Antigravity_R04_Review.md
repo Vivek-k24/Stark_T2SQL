@@ -505,6 +505,22 @@ $env:PYTHONPATH = 'src;.'
 2. **Sequential Promotion:** [Draft PR #19](https://github.com/Vivek-k24/Stark_T2SQL/pull/19) is recommended for **MERGE** into `gemini/full-remediation-review` by the repository owner.
 3. **Mandatory Stopping Gate:** In strict accordance with `AGENTS.md`, Gate R05 may not begin until PR #19 is merged by the repository owner.
 
+---
+
+### 8. Post-Review Documentation & Metadata Corrections
+
+Following owner review, the following documentation-only adjustments were applied prior to merge:
+1. **`ops/progress.json` Metadata Alignment:**
+   - Corrected `github_base_sha` from interim baseline SHA to the authoritative Gate R04 integration baseline: `93ef4a0d12952200b2e5711ae7d3abbf13dcd960`.
+   - Updated GitHub Issue #6 title to match the actual repository issue: `R04 | Semantic resolver, metrics and as-of-date governance (ISS-05/09/18)`.
+2. **Repository HTML LF Line-Ending Normalization:**
+   - Normalized `STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html` to LF line endings (`\n`), eliminating Windows CRLF diff artifacts on GitHub.
+   - Independently verified that `git diff 93ef4a0d12952200b2e5711ae7d3abbf13dcd960 -- STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html` shows only the intended 1-line progress table addition (`2 +-`), with all other content remaining 100% byte-for-byte identical to the integration baseline.
+3. **Local Browser HTML Hash Verification:**
+   - Both local files (`H:\STARK T2SQL\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html` and `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`) synchronized and verified SHA-256 identical:
+     `0e9fb089ae7a4fb280b7ba42bfa29d6771a80b9b57a110c2c10fe0f5b927fecb`.
+   - Status confirmed: **`LOCAL_UI_UPDATED`**.
+
 <!-- STARK_HANDOFF_V1
 {"gate": "R04", "implementation_ready": false, "phase": "verification", "status": "VERIFIED_APPROVE", "subject_sha": "ce0deb793990d8f19ae56cc70cb25e745042ce18", "tests": {"failed": 0, "passed": 612, "scope": "offline", "skipped": 162}}
 -->

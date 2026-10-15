@@ -1,7 +1,7 @@
 {
   "base": "gemini/full-remediation-review",
   "frd": "1.8",
-  "github_base_sha": "cc081e85e442657cef5831a64fc401abe4c4c949",
+  "github_base_sha": "93ef4a0d12952200b2e5711ae7d3abbf13dcd960",
   "interim": {
     "gate": "INT-01",
     "issue": 15,
@@ -86,7 +86,7 @@
       "gate": "R04",
       "issue": 6,
       "issue_state": "open",
-      "issue_title": "R04 | Semantic resolver, governed metrics, entitlements and context building (ISS-03/05)",
+      "issue_title": "R04 | Semantic resolver, metrics and as-of-date governance (ISS-05/09/18)",
       "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/6",
       "live_postgresql": "UNVERIFIED",
       "merge_sha": "not merged",
