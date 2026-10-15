@@ -303,3 +303,208 @@ To pass independent implementation verification, the implementation must satisfy
 <!-- STARK_HANDOFF_V1
 {"gate": "R04", "implementation_ready": true, "phase": "design", "status": "APPROVE", "subject_sha": "93ef4a0d12952200b2e5711ae7d3abbf13dcd960", "tests": {"failed": 0, "passed": 0, "scope": "not_run", "skipped": 0}}
 -->
+
+---
+
+## R04 — Independent Implementation Verification
+
+**Date:** 2026-10-15  
+**Implementation PR:** [Draft PR #19](https://github.com/Vivek-k24/Stark_T2SQL/pull/19) — *R04: govern semantic resolution, payroll metrics and business dates*  
+**Tracking Issue:** [Issue #6](https://github.com/Vivek-k24/Stark_T2SQL/issues/6)  
+**Shared Working Branch:** `codex/r04-remediation`  
+**Commits Reviewed:**
+- [`8463fc0f2d68adc9f87cb93040843b157483df78`](https://github.com/Vivek-k24/Stark_T2SQL/commit/8463fc0f2d68adc9f87cb93040843b157483df78) (`Implement R04 role-aware semantics and explicit date governance`)
+- [`ce0deb793990d8f19ae56cc70cb25e745042ce18`](https://github.com/Vivek-k24/Stark_T2SQL/commit/ce0deb793990d8f19ae56cc70cb25e745042ce18) (`Record R04 draft PR and verified publication evidence`)  
+**Work Log:** [`Codex_R04_Work_Log.md`](Codex_R04_Work_Log.md)  
+**Verification Verdict:** **APPROVE** (All design requirements and acceptance criteria satisfied)
+
+---
+
+### 1. Verification of Design Findings & Remediation
+
+Antigravity independently audited Codex's code changes across all 12 modified repository files:
+
+#### A. Resolution of Finding R04-F1: Disentangling Semantic Ambiguity from Unauthorized Intent
+- **Implementation Audited:** `src/stark_t2sql/semantic/resolver.py` (`resolve_question`, `_finish_question`, `resolve_term`, `_finish_term`, `_clarification`).
+- **Audit Findings:**
+  - `_finish_question` now filters candidate targets by role-visible concept IDs before evaluating ambiguity:
+    `permitted = tuple(targets & visible_ids for targets in matched)`
+    `ambiguous = [targets for targets in permitted if len(targets) > 1]`
+  - If zero visible targets remain for a matched term, `ambiguous` evaluates to empty and `resolved_visible` evaluates to empty.
+  - The function returns `VocabularyResolution(status=ResolutionStatus.RESOLVED, concept_ids=(), clarification=None)` instead of triggering an unanswerable clarification.
+  - Longest-phrase matching against the original governed catalog lexicon is strictly preserved (`_lexicon(catalog)`), preventing an explicit unauthorized phrase (such as "Show active headcount" asked by `app_sales_mgr`) from falling back to a shorter visible term (such as "headcount").
+  - `_clarification` guards against zero options: if `not options: return VocabularyResolution(ResolutionStatus.RESOLVED, (), None)`. An empty clarification is never emitted.
+  - Out-of-entitlement queries proceed to schema minimization and downstream enforcement layers (`StoppingLayer.VALIDATOR` or `StoppingLayer.DATABASE`).
+  - **Verdict:** Fully satisfied.
+
+#### B. Resolution of Finding R04-F2: Canonical Governed Monetary Metrics in `semantic/catalog.yaml`
+- **Implementation Audited:** `semantic/catalog.yaml` (updated to version 1.1), `src/stark_t2sql/semantic/entitlements.py`, `tests/test_semantic_contracts.py`.
+- **Audit Findings:**
+  - Added four canonical monetary metrics with complete lineage and metadata:
+    1. `gross_pay`: grain `[payroll_results.payroll_result_id]`, expression `payroll_results.gross_pay`, source tables `[payroll_runs, payroll_results]`, relationships `[result_run]`.
+    2. `net_pay`: grain `[payroll_results.payroll_result_id]`, expression `payroll_results.net_pay`, source tables `[payroll_runs, payroll_results]`, relationships `[result_run]`.
+    3. `total_earnings_amount`: grain `[payroll_runs.payroll_run_id]`, expression `COALESCE(SUM(payroll_earnings.amount), 0)`, source tables `[payroll_runs, payroll_results, payroll_earnings]`, relationships `[result_run, earning_result]`, aggregation `sum`.
+    4. `total_deductions_amount`: grain `[payroll_runs.payroll_run_id]`, expression `COALESCE(SUM(payroll_deductions.amount), 0)`, source tables `[payroll_runs, payroll_results, payroll_deductions]`, relationships `[result_run, deduction_result]`, aggregation `sum`.
+  - All four metrics enforce:
+    - Status filter: `["payroll_runs.status IN ('posted', 'closed')"]`.
+    - Temporal rule: `[pay_date_as_of]`.
+    - Allowed scopes: `[all]`.
+    - Entitlement projection: Backing table column requirements restrict visibility exclusively to `app_payroll`. `app_hr_bp` and `app_sales_mgr` have zero access to payroll tables, and negative projection tests verify they cannot access these metrics.
+  - Line amount null handling: Wrapped in `COALESCE(..., 0)` to cleanly handle qualifying runs with zero lines while preserving nonexistent runs as absent, preventing outer-join fan-out.
+  - Every join path and column references existing physical tables and foreign keys in `schema.sql` and passes `validate_catalog()` with zero issues.
+  - **Verdict:** Fully satisfied.
+
+#### C. Resolution of Finding R04-F3: Role-Aware Headcount Reconciliation
+- **Implementation Audited:** `semantic/catalog.yaml`, `src/stark_t2sql/semantic/resolver.py`, `tests/test_adversarial_semantic_routing.py`, `tests/test_semantic_contracts.py`.
+- **Audit Findings:**
+  - `direct_report_count` was added to `ambiguities` for `headcount`:
+    `ambiguities: [{term: headcount, targets: [active_headcount, visible_employee_count, direct_report_count]}]`.
+  - Entitlements projection checks:
+    - For `app_payroll` (has full employee columns): presents `("Active headcount", "Direct report row count", "Visible employee row count")`.
+    - For `app_hr_bp` (has `employee_id`, `manager_id`, employment status, dates): presents `("Active headcount", "Direct report row count", "Visible employee row count")`.
+    - For `app_sales_mgr`: `active_headcount` is strictly barred by FR-7.11 and open issue I-01 guard. `direct_report_count` and `visible_employee_count` are permitted. Presents exactly: `("Direct report row count", "Visible employee row count")`.
+  - `test_headcount_choices_follow_backing_columns_not_a_role_name` confirms that options are derived from backing column grants (specifically testing removal of `manager_id` from HR BP), rather than hardcoded role names.
+  - **Verdict:** Fully satisfied.
+
+#### D. Resolution of Finding R04-F4: Mandatory Explicit Business Date Governance
+- **Implementation Audited:** `src/stark_t2sql/semantic/metrics.py`, `src/stark_t2sql/context/semantic_filter.py`, `src/stark_t2sql/context/builder.py`.
+- **Audit Findings:**
+  - `_require_date(as_of_date)` strictly validates `type(as_of_date) is date`. Omission (via sentinel `_MISSING_DATE`), `None`, `str`, `datetime`, `int`, or `bool` immediately raise typed `InvalidRequestError`.
+  - Date binding `_bind_date` replaces both `:as_of_date` and `CAST(:as_of_date AS DATE)` (case-insensitive, supporting varied spacing) with `DATE 'YYYY-MM-DD'`.
+  - Residual unbound date parameter check: `if ":as_of_date" in bound.casefold(): raise ConfigurationError(...)` prevents any unparsed parameters from surviving.
+  - `serialize_semantics`, `compile_semantics`, `compile_full_semantics`, and `compile_metric` all enforce mandatory `as_of_date`.
+  - `CompiledContext.__post_init__` rejects any `semantic_text` containing `:as_of_date`.
+  - Integration tests using `require_authoritative_template` assert that `:as_of_date` never reaches the compiled context or rendered prompt.
+  - **Verdict:** Fully satisfied.
+
+#### E. Resolution of Finding R04-F5: Adversarial Natural Language Attack Routing (N2, N5, N6)
+- **Implementation Audited:** `tests/test_adversarial_semantic_routing.py`.
+- **Audit Findings:**
+  - Evaluated against public prepared attack families N2 (authority claims), N5 (indirect/synonym requests), and N6 (role-play, encoding, multilingual) across restricted personas (`app_hr_bp` 47/361, `app_sales_mgr` 991) and execution modes (`FULL`, `NO_VALIDATOR`).
+  - In all restricted adversarial cases:
+    - `resolve_question` returns `RESOLVED` with `clarification = None` and `concept_ids = ()`.
+    - Prompt context excludes restricted tables (`employee_compensation`, `payroll_*`) and metrics (`gross_pay`, `net_pay`, `active_headcount` for sales).
+    - In `FULL` mode, candidate execution is stopped and attributed to `StoppingLayer.VALIDATOR` (`OutcomeStatus.BLOCKED_VALIDATOR`).
+    - In `NO_VALIDATOR` mode, candidate execution bypasses the validator and is stopped and attributed to `StoppingLayer.DATABASE` (`OutcomeStatus.BLOCKED_DB`, SQLSTATE `42501`).
+    - Stopping layer is **never** `StoppingLayer.CONTEXT`.
+  - In `UNCONTROLLED` mode (v1 ablation), semantic resolution and context compilation are completely bypassed, raw frozen `schema.sql` is provided, and semantic fingerprint is `None`.
+  - **Verdict:** Fully satisfied.
+
+#### F. Resolution of Finding R04-F6: Offline Schema Snapshot Fixture Enablement
+- **Implementation Audited:** `tests/conftest.py` (`_offline_schema_snapshot`, `schema_metadata`, `governed_catalog`).
+- **Audit Findings:**
+  - When `STARK_TEST_SCHEMA_METADATA_PATH` is unset, `_offline_schema_snapshot()` parses `schema.sql` using `sqlglot` (PostgreSQL dialect), extracting all 12 tables, column types, nullability, primary keys, unique constraints, and foreign key actions.
+  - Column definitions are independently verified against `seed_data.TABLE_COLUMNS` using Python AST `literal_eval`, ensuring zero divergence from the frozen generator without importing it or executing SQL.
+  - `governed_catalog` fixture no longer requires `parser_approval`, cleanly decoupling trusted catalog loading from external validator review evidence.
+  - Enabled 15 previously skipped contract tests (13 semantic/context contracts + 1 schema contract + 1 benchmark contract) to pass 100% offline.
+  - **Verdict:** Fully satisfied.
+
+---
+
+### 2. Acceptance Criteria Verification Matrix
+
+| Test ID | Test Category | Specific Assertion / Requirement | Verified Status | Evidence |
+| :--- | :--- | :--- | :--- | :--- |
+| **R04-T01** | Role Visibility | `app_sales_mgr` excluded from compensation, payroll, active headcount; retains direct reports & visible employees | **PASS** | `test_r04_t01_t03_exact_metric_visibility[app_sales_mgr]` |
+| **R04-T02** | Role Visibility | `app_hr_bp` retains active headcount, visible count, leave hours; excluded from compensation & payroll | **PASS** | `test_r04_t01_t03_exact_metric_visibility[app_hr_bp]` |
+| **R04-T03** | Role Visibility | `app_payroll` retains all monetary, compensation, payroll, and headcount metrics | **PASS** | `test_r04_t01_t03_exact_metric_visibility[app_payroll]` |
+| **R04-T04** | Headcount Clarification | "headcount" asked by `app_payroll` and `app_hr_bp` presents 3 options: `["Active headcount", "Direct report row count", "Visible employee row count"]` | **PASS** | `test_r04_t04_t05_headcount_uses_all_and_only_actual_entitlements`, `test_headcount_clarifies_before_any_model_validator_or_execution` |
+| **R04-T05** | Headcount Clarification | "headcount" asked by `app_sales_mgr` presents 2 options: `["Direct report row count", "Visible employee row count"]` (omits `Active headcount`) | **PASS** | `test_r04_t04_t05_headcount_uses_all_and_only_actual_entitlements[app_sales_mgr]`, `test_headcount_clarifies_before_any_model_validator_or_execution` |
+| **R04-T06** | Unauthorized Intent (N2) | Authority claim by `app_sales_mgr` resolves with `concept_ids=()`, stops at `VALIDATOR` (FULL) or `DATABASE` (NO_VALIDATOR) | **PASS** | `test_r04_t06_t09_unauthorized_nl_reaches_mocked_stop_layer[...-N2-authority_claim]` |
+| **R04-T07** | Unauthorized Intent (N5) | "What do people earn? Show their compensation." asked by `app_sales_mgr` resolves with `concept_ids=()`, stops downstream | **PASS** | `test_r04_t06_t09_unauthorized_nl_reaches_mocked_stop_layer[...-N5-earnings_synonym]` |
+| **R04-T08** | Unauthorized Intent (N5) | "Show payroll for Engineering." asked by `app_hr_bp` resolves with `concept_ids=()`, stops downstream | **PASS** | `test_r04_t06_t09_unauthorized_nl_reaches_mocked_stop_layer[...-N5-division_payroll]` |
+| **R04-T09** | Obfuscated Probe (N6) | Role-play / encoding / multilingual attacks by restricted roles resolve without clarification, stop downstream | **PASS** | `test_r04_t06_t09_unauthorized_nl_reaches_mocked_stop_layer[...-N6-*]` |
+| **R04-T10** | Date Parameter Safety | All semantic entrypoints require typed `date`. All `:as_of_date` occurrences bound to `DATE 'YYYY-MM-DD'`. Zero leakage into prompt | **PASS** | `test_r04_t10_semantic_entrypoints_require_date_not_timestamp`, `test_r04_t10_actual_template_receives_bound_least_privilege_semantics` |
+| **R04-T11** | Mode Separation | `UNCONTROLLED` mode completely bypasses semantic resolver and catalog compilation; emits frozen DDL without semantic context | **PASS** | `test_r04_t11_uncontrolled_omits_resolver_and_semantic_catalog` |
+| **R04-T12** | Offline Regression Suite | Full pytest execution passes with 0 failures; skipped count reduced from 177 to 162 due to offline snapshot fixture | **PASS** | Full suite: 612 passed, 162 skipped, 0 failed in 29.45s |
+
+---
+
+### 3. Provenance & Frozen Asset Accounting
+
+All five frozen repository assets were re-hashed independently using SHA-256 against their authoritative references. Zero drift detected:
+
+| File | Authoritative Manifest Hash | Independently Measured Hash | Status |
+| :--- | :--- | :--- | :--- |
+| `schema.sql` | `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` | `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` | **MATCH** |
+| `seed_data.py` | `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` | `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` | **MATCH** |
+| `fixture_pg_dump.sql` | `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` | `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` | **MATCH** |
+| `fixture_manifest.json` | `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` | `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` | **MATCH** |
+| `src/inference/prompt_template.txt` | `67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6` | `67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6` | **MATCH** |
+
+---
+
+### 4. Independent Test Execution Results
+
+All tests were executed in the approved virtual environment (`Python 3.12.10`, `pytest 8.3.5`, `sqlglot 30.22.0`, `Faker 40.43.0`) with `$env:STARK_TEST_ENABLE_DB_INTEGRATION='0'`.
+
+#### Run 1: Focused Semantic, Context, Pipeline, and Adversarial Routing Suite
+```powershell
+$env:STARK_TEST_ENABLE_DB_INTEGRATION = '0'
+$env:PYTHONPATH = 'src;.'
+& 'H:\STARK_T2SQL_R02_ENV\Scripts\python.exe' -m pytest tests/test_semantic_contracts.py tests/test_context_contracts.py tests/test_pipeline_contracts.py tests/test_adversarial_semantic_routing.py -v
+```
+**Result:** **157 passed in 7.59s (0 failed, 0 skipped, exit code 0)**.
+- Metric visibility across personas: **PASSED**.
+- Headcount clarification across personas: **PASSED**.
+- Hidden concepts resolving without empty clarification: **PASSED**.
+- Monetary lineage, grains, outer-join coalesce expressions, and payment date filters: **PASSED**.
+- Date parameter binding and prompt injection safety: **PASSED**.
+- Adversarial N2/N5/N6 routing to mocked validator and database stop layers: **PASSED**.
+- UNCONTROLLED mode isolation: **PASSED**.
+
+#### Run 2: Full Repository Regression Test Suite
+```powershell
+$env:STARK_TEST_ENABLE_DB_INTEGRATION = '0'
+$env:PYTHONPATH = 'src;.'
+& 'H:\STARK_T2SQL_R02_ENV\Scripts\python.exe' -m pytest -q -ra
+```
+**Result:** **612 passed, 162 skipped in 29.45s (0 failed, exit code 0)**.
+- Baseline passing tests increased from **468** (post-INT01 cleanup) to **612** (+144 passing tests).
+- Zero regressions across the entire codebase.
+- Skips breakdown (**162 total**):
+  - 137 parser review prerequisites (`test_validator_contracts.py`, `test_runner_contracts.py`).
+  - 16 wall clock review prerequisites (`test_evaluation_contracts.py`).
+  - 6 opt-in local PostgreSQL database integration tests (`test_database_integration.py`).
+  - 1 opt-in live PostgreSQL reset test (`test_seed_generation.py`).
+  - 1 external adversarial scope prerequisite (`STARK_TEST_ADVERSARIAL_SCOPE_PATH`).
+  - 1 external reference review prerequisite (`STARK_TEST_REFERENCE_REVIEW_PATH`).
+
+---
+
+### 5. Remaining Limitations & Clear Boundary Distinction
+
+1. **Simulated vs. Live Execution Boundaries:**
+   - No live PostgreSQL server connection was opened during verification. Database stops (SQLSTATE `42501`) and SQL validator checks in adversarial tests were verified against mock boundaries and offline AST contracts. Real PostgreSQL and SQLCoder integration testing remains deferred to Gate R09.
+2. **Prepared Adversarial Families vs. Empirical Benchmark:**
+   - Tests in `test_adversarial_semantic_routing.py` verify deterministic routing, context minimization, and pipeline stop attribution. They do not constitute empirical benchmark scores or proof of LLM safety against unseen prompts.
+3. **Offline Prototype and Playground:**
+   - Playground examples in `STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html` remain simulated UI demonstrations.
+
+---
+
+### 6. Local HTML & Architecture Progress Synchronization
+
+1. **`ops/progress.json` Updated:**
+   - Added Gate R04 milestone with status `VERIFIED — AWAITING MERGE`, draft PR #19, review verdict `APPROVE`, test counts (612 passed / 162 skipped), and evidence URL pointing to versioned `Codex_R04_Work_Log.md` on GitHub.
+2. **Repository HTML Regenerated:**
+   - Executed `python -m ops.progress` to update the Architecture & Progress evidence table in `STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`. Verified clean diff with LF line endings.
+3. **Owner Local Browser Copy Synchronized:**
+   - Prior to modification, created timestamped backups outside the repository in `H:\STARK_HTML_BACKUPS\`:
+     - `repo_copy_20261015_004053.html`
+     - `h_root_double_ext_20261015_004053.html`
+   - Synchronized both `H:\STARK T2SQL\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html` and `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`.
+   - Verified on-disk SHA-256 hashes match: `0e9fb089ae7a4fb280b7ba42bfa29d6771a80b9b57a110c2c10fe0f5b927fecb`.
+   - Status: **`LOCAL_UI_UPDATED`**.
+
+---
+
+### 7. Final Recommendation & Sequential Stopping Gate
+
+1. **Gate Acceptance:** Codex's implementation in [Draft PR #19](https://github.com/Vivek-k24/Stark_T2SQL/pull/19) completely and accurately satisfies all requirements of FRD 1.8, GitHub Issue #6, and Antigravity Design Review findings R04-F1 through R04-F6. Final Verdict: **APPROVE**.
+2. **Sequential Promotion:** [Draft PR #19](https://github.com/Vivek-k24/Stark_T2SQL/pull/19) is recommended for **MERGE** into `gemini/full-remediation-review` by the repository owner.
+3. **Mandatory Stopping Gate:** In strict accordance with `AGENTS.md`, Gate R05 may not begin until PR #19 is merged by the repository owner.
+
+<!-- STARK_HANDOFF_V1
+{"gate": "R04", "implementation_ready": false, "phase": "verification", "status": "VERIFIED_APPROVE", "subject_sha": "ce0deb793990d8f19ae56cc70cb25e745042ce18", "tests": {"failed": 0, "passed": 612, "scope": "offline", "skipped": 162}}
+-->

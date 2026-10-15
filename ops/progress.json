@@ -79,6 +79,27 @@
         "scope": "offline",
         "skipped": 177
       }
+    },
+    {
+      "evidence_sha256": "90d8447f47603c1cf94b7c9081f6cc670236bd9551a99cdf1c32e03f707b18fd",
+      "evidence_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/ce0deb793990d8f19ae56cc70cb25e745042ce18/Codex_R04_Work_Log.md",
+      "gate": "R04",
+      "issue": 6,
+      "issue_state": "open",
+      "issue_title": "R04 | Semantic resolver, governed metrics, entitlements and context building (ISS-03/05)",
+      "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/6",
+      "live_postgresql": "UNVERIFIED",
+      "merge_sha": "not merged",
+      "pr": 19,
+      "review_url": "https://github.com/Vivek-k24/Stark_T2SQL/pull/19",
+      "review_verdict": "APPROVE",
+      "state": "VERIFIED — AWAITING MERGE",
+      "tests": {
+        "failed": 0,
+        "passed": 612,
+        "scope": "offline",
+        "skipped": 162
+      }
     }
   ],
   "query_execution": {
