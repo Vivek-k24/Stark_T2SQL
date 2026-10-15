@@ -35,7 +35,7 @@ def main():
             page.get_by_text("Architecture & Progress:",exact=False).first.wait_for()
             page.screenshot(path=str(output/"ui-health.png"))
             page.get_by_test_id("stSidebar").get_by_text("Architecture",exact=True).click()
-            page.get_by_text("GitHub-backed remediation progress",exact=True).wait_for()
+            page.get_by_text("Reviewed remediation progress",exact=True).wait_for()
             page.get_by_text("R03 · MERGED · PR #14",exact=True).wait_for()
             page.screenshot(path=str(output/"ui-architecture.png"))
             page.get_by_test_id("stSidebar").get_by_text("Progress",exact=True).click()
