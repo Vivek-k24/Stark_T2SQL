@@ -1,0 +1,27 @@
+{
+  "sqlglot_version": "30.22.0",
+  "validator_revision": "fr5-validator-r05-1",
+  "function_policy_revision": "fr5-function-r05-1",
+  "approved_node_shapes": [
+    "Select", "Union", "Intersect", "Except", "With", "CTE", "Table",
+    "TableAlias", "From", "Join", "Subquery", "Alias", "Column", "Identifier",
+    "Var", "Literal", "Boolean", "Null", "Star", "Where", "Having", "Group",
+    "Order", "Ordered", "Limit", "Offset", "Distinct", "Paren", "Tuple",
+    "And", "Or", "Not", "EQ", "NEQ", "GT", "GTE", "LT", "LTE", "Is",
+    "Between", "In", "Like", "ILike", "Escape", "Add", "Sub", "Mul",
+    "Mod", "Neg", "Case", "If", "Exists", "Filter", "WithinGroup", "Window",
+    "WindowSpec", "DataType", "DataTypeParam", "Interval"
+  ],
+  "approved_function_rule_ids": [
+    "count-known-v1", "sum-known-v1", "avg-known-v1", "min-known-v1",
+    "max-known-v1", "lower-known-v1", "upper-known-v1", "abs-known-v1",
+    "round-known-v1", "coalesce-known-v1", "nullif-known-v1",
+    "timestamp-trunc-known-v1", "row-number-known-v1", "rank-known-v1",
+    "dense-rank-known-v1", "percentile-cont-known-v1", "cast-special-v1",
+    "extract-special-v1", "current-date-known-v1", "current-timestamp-known-v1",
+    "current-time-known-v1", "localtimestamp-known-v1", "age-anonymous-v1",
+    "statement-timestamp-anonymous-v1", "transaction-timestamp-anonymous-v1",
+    "clock-timestamp-anonymous-v1", "timeofday-anonymous-v1"
+  ],
+  "review_reference": "TEST-ONLY R05 Codex empirical offline capability review: tests/test_r05_parser_evidence.py, tests/test_r05_argument_safety.py and Codex_R05_Work_Log.md. Actual PostgreSQL-dialect SQLGlot 30.22.0 parsing, regeneration, reparse and negative mutations; 59 admitted structural shapes / 27 observed function representations. Div remains excluded because its typed=True layout is rejected by the preserved guard. No human production approval, database audit or live acceptance is asserted."
+}

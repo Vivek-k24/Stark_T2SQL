@@ -20,7 +20,9 @@ def test_health_and_cached_progress_need_no_runtime(project_root,monkeypatch):
     assert health(project_root)["Architecture & Progress"]=="LOCAL READY"
     data=load(project_root)
     assert [m["gate"] for m in data["milestones"][:3]]==["R01","R02","R03"]
-    assert all(m["state"]=="MERGED" and m["live_postgresql"]=="UNVERIFIED" for m in data["milestones"])
+    assert all(m["live_postgresql"]=="UNVERIFIED" for m in data["milestones"])
+    assert all(m["state"]=="MERGED" for m in data["milestones"][:-1])
+    assert data["milestones"][-1]["state"] in {"MERGED", "VERIFIED — AWAITING MERGE"}
 
 def test_real_streamlit_public_views_without_connected_startup(project_root,monkeypatch):
     pytest.importorskip("streamlit")

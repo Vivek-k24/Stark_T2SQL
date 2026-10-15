@@ -12,7 +12,7 @@ import pytest
 
 from seed_data import TABLE_COLUMNS
 from stark_t2sql.config import DatabaseCredentials, IsolationControls, ResourceBudgets, RuntimeLimits
-from stark_t2sql.contracts import ExecutionMode, OutcomeStatus, ReasonCode
+from stark_t2sql.contracts import ExecutionMode, OutcomeStatus, Persona, ReasonCode, StoppingLayer
 from stark_t2sql.db import connections
 from stark_t2sql.errors import ConfigurationError, LocalEndpointError, MissingDependencyError
 from stark_t2sql.utils.local_only import LoopbackEndpoint, require_allowed_url
@@ -391,3 +391,150 @@ def test_ablation_driver_routing_keeps_business_identity_except_uncontrolled(mon
         assert calls[0][1] == ("326",) and calls[1][0] == 'SET LOCAL ROLE "app_payroll"'
     else:
         assert calls == [(candidate, None)]
+
+
+# R05 checks below use the installed parser and the explicitly test-only parser
+# profile. The connection source, driver, SQLSTATE and returned rows are mocks;
+# they do not establish live PostgreSQL grants, RLS or deployment acceptance.
+R05_UNSAFE_CANDIDATES = (
+    "SET app.principal_id='1'",
+    "DROP TABLE employees",
+    "SELECT 1; SELECT 2",
+    "WITH removed AS (DELETE FROM employees RETURNING employee_id) SELECT employee_id FROM removed",
+    "SELECT rolname FROM pg_catalog.pg_roles",
+    "SELECT pg_sleep(1)",
+    "SELECT employee_id FROM employees FOR UPDATE",
+)
+
+
+@pytest.mark.parametrize("mode", tuple(ExecutionMode))
+@pytest.mark.parametrize("candidate", R05_UNSAFE_CANDIDATES)
+def test_r05_real_harness_rejects_unsafe_candidates_in_every_mode(matrix, payroll_persona, parser_approval, mode, candidate):
+    from stark_t2sql.errors import HarnessSafetyStopError
+    from stark_t2sql.security.validator import HarnessSafetyReviewer, ValidationRuleCode
+
+    reviewer = HarnessSafetyReviewer(matrix, approval=parser_approval)
+    with pytest.raises(HarnessSafetyStopError) as stopped:
+        reviewer.review_candidate(candidate, persona=payroll_persona, mode=mode,
+            policy_fingerprint=matrix.sha256, clone_token="unit-only-clone-token",
+            fixture_dump_fingerprint=sha256(b"unit-only fixture").hexdigest())
+    assert stopped.value.status is OutcomeStatus.HARNESS_SAFETY_STOP
+    assert stopped.value.reason_code is ReasonCode.HARNESS_SAFETY_STOP
+    assert stopped.value.validation_rule_code not in {
+        ValidationRuleCode.REVIEW_REQUIRED, ValidationRuleCode.PARSER_UNAVAILABLE,
+        ValidationRuleCode.PARSER_PROFILE, ValidationRuleCode.POLICY_BINDING,
+    }
+    # FR-9.5 forbids misattributing unexecuted hazardous cases to the validator
+    # or database. The shared contract calls this distinct location HARNESS.
+    assert stopped.value.stopping_layer is StoppingLayer.HARNESS
+
+
+@pytest.mark.parametrize("mode", tuple(ExecutionMode))
+def test_r05_real_harness_admits_scoped_select_in_every_mode(matrix, payroll_persona, parser_approval, mode):
+    from stark_t2sql.security.validator import HarnessSafetyReviewer
+
+    candidate = "SELECT employee_id FROM employees"
+    fingerprint = sha256(b"unit-only fixture").hexdigest()
+    review = HarnessSafetyReviewer(matrix, approval=parser_approval).review_candidate(
+        candidate, persona=payroll_persona, mode=mode, policy_fingerprint=matrix.sha256,
+        clone_token="unit-only-clone-token", fixture_dump_fingerprint=fingerprint)
+    assert review.regenerated_sql == candidate
+    assert review.mode is mode and review.principal_id == payroll_persona.principal_id
+    assert review.candidate_fingerprint == sha256(candidate.encode()).hexdigest()
+    assert review.policy_fingerprint == matrix.sha256
+    assert review.clone_token == "unit-only-clone-token"
+    assert review.fixture_dump_fingerprint == fingerprint
+
+
+@pytest.mark.parametrize("mode", (ExecutionMode.NO_VALIDATOR, ExecutionMode.UNCONTROLLED))
+@pytest.mark.parametrize("candidate", R05_UNSAFE_CANDIDATES)
+def test_r05_ablations_stop_unsafe_sql_before_mock_connection(matrix, payroll_persona, parser_approval, mode, candidate):
+    from stark_t2sql.db.executor import EvaluationExecutor
+    from stark_t2sql.security.validator import HarnessSafetyReviewer
+
+    source = mocked_evaluation_source(matrix, payroll_persona)
+    result = EvaluationExecutor(source, safety_reviewer=HarnessSafetyReviewer(matrix, approval=parser_approval)).execute(
+        payroll_persona, candidate, mode=mode)
+    source.connection.assert_not_called()
+    source.config.resource_budgets.require_database_budget_inputs.assert_not_called()
+    assert result.executed_sql is None and result.sqlstate is None
+    assert not result.rows
+    assert result.status is OutcomeStatus.HARNESS_SAFETY_STOP
+    assert result.reason_code is ReasonCode.HARNESS_SAFETY_STOP
+    assert result.stopping_layer is StoppingLayer.HARNESS
+
+
+def test_r05_full_validator_reports_unauthorized_sales_table_at_validator_layer(matrix, parser_approval):
+    from stark_t2sql.errors import SQLValidationError
+    from stark_t2sql.security.validator import ReviewedSQLValidator, ValidationRuleCode
+
+    # This is a synthetic test principal, not a fixture-resolved Sales identity.
+    sales = Persona("Unit Sales manager", "app_sales_mgr", 991, matrix.role("app_sales_mgr").login_role)
+    assert "employee_compensation" not in matrix.role(sales.business_role).tables
+    with pytest.raises(SQLValidationError) as stopped:
+        ReviewedSQLValidator(matrix, approval=parser_approval).review_select(
+            "SELECT base_salary FROM employee_compensation", persona=sales, policy_fingerprint=matrix.sha256)
+    assert stopped.value.validation_rule_code is ValidationRuleCode.TABLE
+    assert stopped.value.status is OutcomeStatus.BLOCKED_VALIDATOR
+    assert stopped.value.reason_code is ReasonCode.VALIDATOR_REJECTED
+    assert stopped.value.stopping_layer is StoppingLayer.VALIDATOR
+
+
+@pytest.mark.parametrize("mode", (ExecutionMode.NO_VALIDATOR, ExecutionMode.UNCONTROLLED))
+@pytest.mark.parametrize("permission_denied", (False, True))
+def test_r05_real_harness_routes_unauthorized_table_to_mock_driver_with_correct_identity(monkeypatch, matrix, parser_approval, mode, permission_denied):
+    from stark_t2sql.db.executor import EvaluationExecutor
+    from stark_t2sql.security.validator import HarnessSafetyReviewer
+
+    # The real parser/reviewer admits this structurally safe fixture-table query
+    # only in the two entitlement-ablated modes. All database effects are mocked.
+    sales = Persona("Unit Sales manager", "app_sales_mgr", 991, matrix.role("app_sales_mgr").login_role)
+    source = mocked_evaluation_source(matrix, sales)
+    connection = MemoryConnection([(1,)])
+    selected = []
+    @contextmanager
+    def lease(*, persona):
+        selected.append(persona)
+        yield connection
+    source.connection = lease
+    candidate = "SELECT base_salary FROM employee_compensation"
+    if permission_denied:
+        execute = connection.cursor_object.execute
+        def deny_candidate(query, parameters=None):
+            execute(query, parameters)
+            if query == candidate:
+                error = RuntimeError("unit-only simulated SQLSTATE 42501; not live PostgreSQL")
+                error.pgcode = "42501"
+                raise error
+        monkeypatch.setattr(connection.cursor_object, "execute", deny_candidate)
+    module = import_module("stark_t2sql.db.executor")
+    monkeypatch.setitem(sys.modules, "psycopg2", SimpleNamespace(sql=SimpleNamespace(SQL=TextSQL, Identifier=lambda name: '"' + name + '"')))
+    monkeypatch.setattr(module, "_ClientDeadline", NoDeadlineThread)
+    reviewer = HarnessSafetyReviewer(matrix, approval=parser_approval)
+    result = EvaluationExecutor(source, safety_reviewer=reviewer).execute(sales, candidate, mode=mode)
+    assert result.executed_sql == candidate
+    source.config.resource_budgets.require_database_budget_inputs.assert_called_once_with()
+    calls = connection.cursor_object.calls
+    if mode is ExecutionMode.NO_VALIDATOR:
+        assert selected == [sales] and selected[0].login_role == "stark_sales_login"
+        assert calls == [
+            ("SELECT pg_catalog.set_config('app.principal_id', %s::text, true)", ("991",)),
+            ('SET LOCAL ROLE "app_sales_mgr"', None),
+            (candidate, None),
+        ]
+    else:
+        # EvaluationConnectionSource chooses its dedicated baseline login when
+        # passed None; this protocol test proves selection, not real credentials.
+        assert selected == [None]
+        assert calls == [(candidate, None)]
+    if permission_denied:
+        assert result.status is OutcomeStatus.BLOCKED_DB
+        assert result.reason_code is ReasonCode.DB_PERMISSION_DENIED
+        assert result.stopping_layer is StoppingLayer.DATABASE
+        assert result.sqlstate == "42501" and not result.rows
+        assert connection.rollbacks == 1 and connection.commits == 0
+    else:
+        assert result.status is OutcomeStatus.ANSWERED
+        assert result.reason_code is ReasonCode.ANSWERED
+        assert result.stopping_layer is StoppingLayer.NONE
+        assert connection.commits == 1 and connection.rollbacks == 0

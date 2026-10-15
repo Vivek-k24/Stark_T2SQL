@@ -1,6 +1,6 @@
-"""Future parser contracts require the real reviewed parser/profile.
+"""Offline contracts exercise the explicit, measured R05 test parser subset.
 
-Missing review input never becomes a generated approval or acceptance claim.
+No runtime approval is generated, and production still requires human review.
 No candidate in these definitions is submitted to a database.
 """
 from dataclasses import replace
@@ -102,7 +102,7 @@ def test_rejected_shapes_never_provide_execution_text(sql, reviewed_validator, p
 @pytest.mark.parametrize("rule", PROPOSED_RULES, ids=lambda rule: rule.rule_id)
 def test_each_reviewed_signature_positive(rule, parser_approval, reviewed_validator, payroll_persona, matrix):
     if rule.rule_id not in parser_approval.approved_function_rule_ids:
-        pytest.skip(f"Signature is not present in actual external review: {rule.rule_id}; no acceptance evidence.")
+        pytest.skip(f"Parser representation excluded from supplied evidence: {rule.rule_id}; no acceptance evidence.")
     import sqlglot
     decision = reviewed_validator.validate(FUNCTION_POSITIVE_SQL[rule.rule_id], persona=payroll_persona, policy_fingerprint=matrix.sha256)
     assert decision.accepted, decision.rule_code
@@ -110,24 +110,8 @@ def test_each_reviewed_signature_positive(rule, parser_approval, reviewed_valida
     assert len(parsed) == 1
     policy = ReviewedFunctionPolicy(sqlglot.exp, frozenset({rule.rule_id}))
     exact_class = getattr(sqlglot.exp, rule.parser_class)
-    matching = [node for node in parsed[0].walk() if type(node) is exact_class]
-    if rule.parser_class == "Anonymous":
-        # Exercise that individual alternate layout without pretending that
-        # this parser chooses it for recognized SQL names. The parsed original
-        # supplies actual child expressions and WITHIN GROUP parent semantics.
-        projection = parsed[0].expressions[0]
-        original = projection.args["this"] if type(projection) is getattr(sqlglot.exp, "WithinGroup", None) else projection
-        arguments = {
-            "count": [sqlglot.exp.Star()], "sum": [sqlglot.exp.column("base_salary")],
-            "avg": [sqlglot.exp.column("base_salary")], "min": [sqlglot.exp.column("employee_id")],
-            "max": [sqlglot.exp.column("employee_id")], "lower": [sqlglot.exp.column("first_name")],
-            "date_trunc": [sqlglot.exp.Literal.string("month"),sqlglot.exp.column("hire_date")],
-            "percentile_cont": [sqlglot.exp.Literal.number("0.5")],
-            "age": [sqlglot.exp.Literal.string("2026-10-12"),sqlglot.exp.Literal.string("2026-01-01")],
-        }.get(rule.sql_name, [])
-        alternative = exact_class(this=rule.sql_name, expressions=arguments)
-        original.replace(alternative)
-        matching = [alternative]
+    matching = [node for node in parsed[0].walk() if type(node) is exact_class
+                and (rule.parser_class != "Anonymous" or node.name.lower() == rule.sql_name)]
     assert matching, "Actual reviewed node layout did not occur; review/profile reconciliation is required."
     assert any(policy.require(node).rule_id == rule.rule_id for node in matching)
 
@@ -146,14 +130,12 @@ def test_columns_are_reserved_to_database_grants(reviewed_validator, hr_persona,
 @pytest.mark.parametrize("rule", PROPOSED_RULES, ids=lambda rule: rule.rule_id)
 def test_each_reviewed_signature_rejects_unreviewed_arguments(rule,parser_approval):
     if rule.rule_id not in parser_approval.approved_function_rule_ids:
-        pytest.skip(f"Signature not actually reviewed: {rule.rule_id}; no acceptance evidence.")
+        pytest.skip(f"Parser representation excluded from supplied evidence: {rule.rule_id}; no acceptance evidence.")
     import sqlglot
     exact_class=getattr(sqlglot.exp,rule.parser_class)
-    if rule.parser_class == "Anonymous":
-        node=exact_class(this=rule.sql_name,expressions=[])
-    else:
-        statements=sqlglot.parse(FUNCTION_POSITIVE_SQL[rule.rule_id],read="postgres")
-        node=next(item for item in statements[0].walk() if type(item) is exact_class)
+    statements=sqlglot.parse(FUNCTION_POSITIVE_SQL[rule.rule_id],read="postgres")
+    node=next(item for item in statements[0].walk() if type(item) is exact_class
+              and (rule.parser_class != "Anonymous" or item.name.lower() == rule.sql_name))
     node.set("unreviewed_option",True)
     with pytest.raises(FunctionPolicyViolation):
         ReviewedFunctionPolicy(sqlglot.exp,frozenset({rule.rule_id})).require(node)
