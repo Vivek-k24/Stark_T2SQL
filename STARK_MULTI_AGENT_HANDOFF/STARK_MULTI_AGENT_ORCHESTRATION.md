@@ -16,7 +16,7 @@ The sequence for R04–R09 is:
    `STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html` based on actual evidence.
    Push these changes to the existing PR. Also synchronize the separately
    stored local browser file
-   `H:\\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html` to the final reviewed
+   `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html` to the final reviewed
    canonical HTML (the tracked file has only one `.html` extension). Protect
    independent local edits before copying, compare or hash the resulting files,
    and report whether the H: file was actually updated. If the H: drive is
