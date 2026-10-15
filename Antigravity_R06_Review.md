@@ -290,3 +290,224 @@ In accordance with `AGENTS.md` and GitHub Issue #8, the permitted implementation
 <!-- STARK_HANDOFF_V1
 {"gate": "R06", "implementation_ready": true, "phase": "design", "status": "APPROVE", "subject_sha": "4e50ff9b0087014738dd88b46b457c949f3830d0", "tests": {"failed": 0, "passed": 0, "scope": "not_run", "skipped": 0}}
 -->
+
+---
+
+# Antigravity Gate R06 Implementation Verification Report
+
+**Project:** STARK T2SQL  
+**Gate:** R06 — Reference Oracle Security, Comparator Contracts, and Per-Table Scope Derivation  
+**Tracking Issue:** [GitHub Issue #8](https://github.com/Vivek-k24/Stark_T2SQL/issues/8)  
+**Draft PR:** [GitHub Draft PR #21](https://github.com/Vivek-k24/Stark_T2SQL/pull/21)  
+**Integration Baseline Commit:** `4e50ff9b0087014738dd88b46b457c949f3830d0`  
+**Shared Working Branch:** `codex/r06-remediation`  
+**Reviewed Implementation Commit:** `af68731ae58bc18b66d9e8dfd80b780a4d9715f8`  
+**Latest Reviewed Codex Commit:** `0f0c6d318f23720277227794732e0f9a353c8210`  
+**Verification Date:** 2026-10-15  
+**Reviewer:** Antigravity (Independent Architecture & Security Reviewer)  
+**Final Verification Verdict:** **APPROVE** (Verified — Awaiting Owner Merge)
+
+---
+
+## 7. Independent Implementation Audit
+
+Antigravity has performed an exhaustive, independent source, security, and test verification of Codex's Gate R06 remediation in Draft PR #21 against FRD 1.8 (Section 9), GitHub Issue #8, and the approved Gate R06 Design Review.
+
+### A. Verification of Finding R06-F1: Reference Oracle Security & Administrative Connection Boundaries
+- **Implementation Audited:** `src/stark_t2sql/evaluation/reference.py` (`ReferenceAuthority`, `ScopeReviewStore`, `_require_reference_lineage`, `_relation_tree`).
+- **Audit Findings:**
+  1. **Strict Administrative Execution Boundary:** `ReferenceAuthority.evaluate()` enforces that in controlled modes (`FULL`, `NO_VALIDATOR`, `NO_PROMPT_FILTER`), reference SQL can NEVER execute over the administrative connection without an explicit, valid `ScopeReviewStore`. If `_scope_reviews` is absent or unconfigured, the oracle immediately fails closed with `MissingDependencyError`.
+  2. **`ScopeReviewStore` Tamper-Resistance:** `ScopeReviewStore.require()` validates:
+     - The relative path `review.scope_review_reference` resolves within the trusted root directory (preventing directory traversal attacks).
+     - File payload size is bounded to 1 MiB.
+     - The SHA-256 digest of the exact file bytes matches the separately supplied, owner-approved set `self.approved_sha256`.
+     - JSON structure is strictly validated with unique key enforcement (`object_pairs_hook=unique_pairs`), requiring exact fields: `{"kind", "review_binding_sha256", "matrix_sha256", "reviewer", "scope_analysis"}`.
+     - `record["kind"] == "OWNER_APPROVED_REFERENCE_SCOPE_V1"` is mandatory (test-only or unauthorized kinds fail closed).
+     - `record["review_binding_sha256"]` must match `review.binding_sha256` (which cryptographically binds template SQL hash, case, persona, principal, date, projection, row scope, lineage, fixture digest, and policy state).
+     - `record["matrix_sha256"]` must match `matrix.sha256`.
+  3. **Prevention of Global Admin Scope Leaks (ISS-07):** For personas with restricted row scopes (`app_hr_bp`, `app_sales_mgr`), `ReferenceAuthority.evaluate()` verifies:
+     - `review.row_scope` strictly matches `reference_row_scope(physical, matrix, persona, mode)`.
+     - If any table in `physical` is an RLS table (`employees`, `leave_balances`), `review.row_scope` CANNOT be `RowScopeKind.ALL`.
+     - Reference SQL template must mandate the `{{principal}}` slot (`review.principal_marker == "{{principal}}"`).
+     - Reference queries run through the mandatory `HarnessSafetyReviewer` before administrative execution.
+     - Physical relation and column lineage reads are audited against the live schema and matrix entitlements via `_require_reference_lineage()`.
+  4. **Verdict:** Fully satisfied. Global administrator results can never silently score or impersonate persona-scoped queries.
+
+---
+
+### B. Verification of Finding R06-F2: Per-Table Row Scope Derivation (ISS-10)
+- **Implementation Audited:** `src/stark_t2sql/evaluation/ablation.py#direct`, `src/stark_t2sql/evaluation/reference.py#reference_row_scope`, `src/stark_t2sql/evaluation/reference.py#_relation_tree`.
+- **Audit Findings:**
+  1. **Ablation Harness Derivation:** In `AblationHarness.direct()`, lines 197–218, the naive substring check (`"leave_balances" in sql.lower()`) and unconditional `employees.row_scope` fallback have been **completely eliminated**.
+  2. **Lexical AST Relation Extraction:** `physical_reference_tables()` parses the executed SQL using `SQLGlot 30.22.0` with `traverse_scope()` to resolve physical tables, CTEs, and subqueries:
+     - Non-RLS reference tables (e.g. `SELECT department_id FROM departments`) evaluate strictly to `RowScopeKind.ALL` for all personas (including HR BP and Sales Manager).
+     - Queries accessing `employees` evaluate to the persona's role scope (`ASSIGNED_DIVISIONS` for HR BP, `DIRECT_REPORTS` for Sales Manager, `ALL` for Payroll).
+     - Queries accessing `leave_balances` evaluate to `RowScopeKind.VIA_EMPLOYEES`.
+     - Mixed joins (`employees` JOIN `departments`) correctly evaluate to `RowScopeKind.ASSIGNED_DIVISIONS` (HR BP).
+     - Comments, string literals, CTE names, and column aliases (e.g. `SELECT department_id AS employees FROM departments -- leave_balances\n`) cannot fool the extractor into reporting a restricted scope; they evaluate to `RowScopeKind.ALL`.
+     - In `UNCONTROLLED` mode, row scope evaluates unconditionally to `RowScopeKind.ALL`.
+  3. **Fail-Closed on Unattributable Metadata:** If relation extraction encounters an unknown table, table function, or conflicting scopes, `ablation.py` discards answered rows (`columns=(), rows=()`), records the failure diagnostic, but preserves `result.executed_sql` for the execution audit record.
+  4. **Preservation of DB Denial Attribution:** When a candidate query is denied by the database (e.g. `BLOCKED_DB` with SQLSTATE `42501`), `scope` remains `None`, preserving the engine-level denial attribution.
+  5. **Verdict:** Fully satisfied.
+
+---
+
+### C. Verification of Finding R06-F3: Projection Mapping and Safe Dynamic SQL Hash Guarantees
+- **Implementation Audited:** `src/stark_t2sql/evaluation/comparator.py` (`_mapping`, `ApprovedColumnMapping`, `compare_results`, `canonical_cell`).
+- **Audit Findings:**
+  1. **Dynamic Candidate SQL Support:** In `ApprovedColumnMapping`, `candidate_sql_sha256: str | None = None` is optional. When dynamic SQL is executed, the cursor column mapping operates with fixed reference SQL hashes without requiring pre-hashing of dynamic candidate SQL.
+  2. **Bijective Column Correspondence:** In `_mapping()`, when mapping cursor columns to reference columns without an explicit mapping, column correspondence requires an exact bijective 1-to-1 match.
+  3. **Duplicate and Ambiguous Alias Rejection:** Duplicate cursor column aliases (e.g. `SELECT id, id`), unknown aliases, or competing display and canonical names fail closed immediately with `LookupError` without guessing based on cell values. Duplicate cursor labels with an explicit mapping require an exact pinned candidate SQL hash.
+  4. **Multiset Equivalence:** `compare_results()` uses `collections.Counter` to compare rows as multisets, ignoring row ordering while strictly enforcing duplicate row multiplicity.
+  5. **Scalar Kind Distinction & Quantization:** `canonical_cell()` strictly enforces distinct tag tuples:
+     - `NULL` (`("null", None)`) vs `0` (`("int", 0)`) do not match.
+     - `bool` (`("bool", True)`) vs `int` (`("int", 1)`) do not match.
+     - `date` (`("date", ...)`) vs `datetime` (`("datetime", ...)`) do not match.
+     - Floating point and Decimal values are quantized to `Decimal("0.01")` using `ROUND_HALF_UP`.
+     - Non-finite numbers (`NaN`, `Infinity`) fail comparison with `ValueError`.
+  6. **Verdict:** Fully satisfied.
+
+---
+
+### D. Evaluation of Design Deviation (Finding R06-F4 & R06-T12)
+- **Design Proposal:** The design review suggested creating an offline test fixture JSON in `tests/fixtures/` and updating `tests/conftest.py` so that `test_actual_external_reference_review_is_frozen` would pass offline without skips.
+- **Codex Implementation Choice:** Codex retained `test_actual_external_reference_review_is_frozen` as skipped when `STARK_TEST_REFERENCE_REVIEW_PATH` is absent, while adding thorough offline tests verifying `ReferenceReview` immutability, digest calculation, and fail-closed rejection of test-only records.
+- **Independent Assessment:**
+  1. Codex's choice strictly complies with `AGENTS.md` Rule 5 ("Distinguish mocked/offline test results from actual PostgreSQL, SQLCoder and full end-to-end evidence. Never mislabel scripted example SQL as LIVE") and FRD 1.8 trust boundaries.
+  2. `ReferenceReview` represents an authoritative human owner's review. Manufacturing a test fixture that purports to be an owner reference review when none has been signed by the owner would constitute invented acceptance evidence.
+  3. Retaining the genuine external input requirement accurately conveys that live production benchmarking remains dependent on external owner review records.
+  4. Contractual immutability and schema fidelity are verified 100% offline via dedicated negative and unit mock tests.
+  5. **Conclusion:** This design deviation is justified, principled, and enhances architectural security. It permits an offline **APPROVE** verdict while explicitly recording the outstanding external prerequisite.
+
+---
+
+## 8. Acceptance Criteria Matrix Verification
+
+| Criterion ID | Target Requirement | Measured Outcome | Verdict |
+| :--- | :--- | :--- | :--- |
+| **R06-T01** | Reference Review Persona/Scope Binding (ISS-07) | `ReferenceAuthority.evaluate()` verifies exact match on `case_id`, `mode`, `persona`, `principal_id`, `as_of_date`, and valid `row_scope`. Context mismatches reject before source access. | **PASS** |
+| **R06-T02** | Prevention of Admin Reference Scope Leaks (ISS-07) | For restricted personas (`app_hr_bp`, `app_sales_mgr`), reference queries touching RLS tables strictly reject `RowScopeKind.ALL` in controlled modes. Unapproved evidence blocks admin reads. | **PASS** |
+| **R06-T03** | Principal Parameterization for Scoped Tables (ISS-07) | Reference SQL templates querying RLS tables under scoped personas strictly mandate `{{principal}}`. Missing/wrong marker fails closed. Marker alone does not authorize execution. | **PASS** |
+| **R06-T04** | Per-Table Row Scope in Direct Ablation (ISS-10) | `AblationHarness.direct()` parses executed SQL: `departments`-only yields `RowScopeKind.ALL`; `employees` yields role scope; joins inherit restricted scope; comments/literals cannot spoof tables; UNCONTROLLED yields `ALL`. | **PASS** |
+| **R06-T05** | Per-Table Row Scope in Reference Authority (ISS-10) | `reference_row_scope()` and `ReferenceAuthority.evaluate()` do not merge `employees.row_scope` when `employees` is absent. Non-RLS reference queries require `RowScopeKind.ALL`. | **PASS** |
+| **R06-T06** | Comparator Multiset Row Order Invariance (ISS-08, FR-9.2) | `compare_results()` ignores row ordering while preserving multiset duplicate counts. Permutations match (`True`); frequency mismatches fail (`False`). | **PASS** |
+| **R06-T07** | Exact Scalar Cell Canonicalization (ISS-08, FR-9.2) | `canonical_cell()` strictly distinguishes `NULL` vs `0`, `bool` vs `int`, `date` vs `datetime`. Quantizes Decimal/float to `Decimal("0.01")` via `ROUND_HALF_UP`. Non-finite numbers fail. | **PASS** |
+| **R06-T08** | Dynamic Candidate SQL Projection Mapping (ISS-08) | `_mapping()` safely maps dynamic LLM candidate SQL cursor columns to reference columns without requiring `candidate_sql_sha256`. Reference SQL hash matching is strictly enforced. | **PASS** |
+| **R06-T09** | Rejection of Ambiguous or Swapped Aliases (ISS-08) | Duplicate cursor aliases, unknown aliases, competing canonical/display labels, and case changes fail closed (`LookupError`) without guessing semantics based on values. | **PASS** |
+| **R06-T10** | Bijective Mapping Integrity in `ApprovedColumnMapping` (ISS-08) | `ApprovedColumnMapping` enforces exact bijective 1-to-1 slot mapping. Non-bijections, dimension mismatches, empty identities, or missing review fail closed. | **PASS** |
+| **R06-T11** | Scoped Result Row Count Evaluation (FR-9.4) | `evaluate_expected()` for `SCOPED_RESULT` verifies candidate row count matches persona-scoped reference row count. Empty results pass only against empty reference. | **PASS** |
+| **R06-T12** | Offline Reference Review Test Enablement | Immutability and validation verified via unit mock contracts. Genuine external input `STARK_TEST_REFERENCE_REVIEW_PATH` retained as an honest prerequisite for live scoring. | **PASS (Conditional / Prerequisite Retained)** |
+
+---
+
+## 9. Independent Test Execution Results
+
+All tests were executed in the approved virtual environment (`Python 3.12.10`, `pytest 8.3.5`, `sqlglot 30.22.0`) with `$env:STARK_TEST_ENABLE_DB_INTEGRATION='0'`.
+
+### Test Suite 1: Prescribed Reference & Comparator Suite
+```powershell
+$env:STARK_TEST_ENABLE_DB_INTEGRATION = '0'
+$env:PYTHONPATH = 'src;.'
+python -m pytest tests/test_reference_contracts.py tests/test_comparator_contracts.py -q -ra
+```
+- **Result:** **203 passed, 1 skipped in 0.82s (0 failed)**.
+- Single skip: `tests/test_reference_contracts.py::test_actual_external_reference_review_is_frozen` (genuine external input `STARK_TEST_REFERENCE_REVIEW_PATH` retained as an uninvented prerequisite).
+
+### Test Suite 2: Expanded R06 Suite (Including Direct-Harness Ablation Scope)
+```powershell
+$env:STARK_TEST_ENABLE_DB_INTEGRATION = '0'
+$env:PYTHONPATH = 'src;.'
+python -m pytest tests/test_reference_contracts.py tests/test_comparator_contracts.py tests/test_r06_ablation_scope.py -q -ra
+```
+- **Result:** **245 passed, 1 skipped in 0.86s (0 failed)**.
+
+### Test Suite 3: Full Repository Offline Regression Suite
+```powershell
+$env:STARK_TEST_ENABLE_DB_INTEGRATION = '0'
+$env:PYTHONPATH = 'src;.'
+python -m pytest -q -ra
+```
+- **Result:** **1,319 passed, 58 skipped in 41.82s (0 failed)**.
+- Baseline passing tests increased from 1,112 (R05) to **1,319** (+207 passing tests).
+- Zero regressions across the entire STARK T2SQL codebase.
+
+#### Skip Reconciliation (58 Skips Total):
+- 32 skips in `test_validator_contracts.py` (16 excluded function representations).
+- 16 skips in `test_evaluation_contracts.py` (missing wall-clock review inputs `STARK_TEST_WALLCLOCK_REVIEW_PATH`).
+- 1 skip in `conftest.py` (missing adversarial scope input `STARK_TEST_ADVERSARIAL_SCOPE_PATH`).
+- 1 skip in `conftest.py` (missing reference review input `STARK_TEST_REFERENCE_REVIEW_PATH`).
+- 6 skips in `test_database_integration.py` (local PostgreSQL integration disabled).
+- 1 skip in `test_runner_contracts.py` (local PostgreSQL integration disabled).
+- 1 skip in `test_seed_generation.py` (live PostgreSQL reset disabled).
+
+---
+
+## 10. Architecture & Progress Update & Local Browser HTML Synchronization
+
+### A. `ops/progress.json` Updated
+1. `github_base_sha` updated to `4e50ff9b0087014738dd88b46b457c949f3830d0` (verified merge SHA of Gate R05 PR #20).
+2. Milestone R05 updated to:
+   - `state: "MERGED"`
+   - `merge_sha: "4e50ff9b0087014738dd88b46b457c949f3830d0"`
+   - `merged_at: "2026-10-15T21:07:17Z"`
+   - `merged_by: "Vivek-k24"`
+   - `issue_state: "closed"`
+3. Milestone R06 added:
+   - `gate: "R06"`
+   - `state: "VERIFIED — AWAITING MERGE"`
+   - `pr: 21`
+   - `merge_sha: "not merged"`
+   - `issue: 8`
+   - `issue_title: "R06 | Reference oracle, comparator, and per-table scope (ISS-07/08/10)"`
+   - `issue_url: "https://github.com/Vivek-k24/Stark_T2SQL/issues/8"`
+   - `review_verdict: "APPROVE"`
+   - `live_postgresql: "UNVERIFIED"`
+   - `evidence_url: "https://github.com/Vivek-k24/Stark_T2SQL/blob/0f0c6d318f23720277227794732e0f9a353c8210/Codex_R06_Work_Log.md"`
+   - `evidence_sha256: "784e8a7b11286faf3d2e6187d790eb88b654673ded355246c623432d1e249105"`
+   - `tests: {"failed": 0, "passed": 1319, "scope": "offline", "skipped": 58}`
+
+### B. Canonical Repository HTML Regenerated
+- Executed `python -m ops.progress`.
+- Normalized line endings to LF.
+- Verified via `git diff` that **only** the progress table inside `<!-- STARK_PROGRESS_BEGIN -->` and `<!-- STARK_PROGRESS_END -->` was modified. All navigation, interactive controls, and styling remain untouched.
+- All 5 tests in `tests/test_interim_ui.py` pass.
+
+### C. Local Browser HTML Synchronization
+1. **Primary Local Repository Path:** `H:\STARK T2SQL\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`
+   - SHA-256: `16033C0B77F15BE8CC27B3D157F81BC4B70A79B38BD40E8454ACB56598C55BCD`
+   - Status: **`LOCAL_UI_UPDATED`**
+2. **Legacy Browser Copy Path:** `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`
+   - Existing file backed up to: `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html.bak_20261015_165517` (preserving previous R05 SHA `7CD526D2BA795B5928A19FF3CB28B262D259A9A15EE3B0758A690601D29471FD`).
+   - Copied canonical repository HTML to legacy path.
+   - Verified SHA-256: `16033C0B77F15BE8CC27B3D157F81BC4B70A79B38BD40E8454ACB56598C55BCD` (exact byte-for-byte match).
+   - Status: **`LOCAL_UI_UPDATED`**
+
+---
+
+## 11. Frozen Asset Integrity
+
+All nine frozen repository assets were re-hashed independently using SHA-256. Zero drift detected:
+
+| File | Authoritative Manifest Hash | Independently Measured Hash | Status |
+| :--- | :--- | :--- | :--- |
+| `schema.sql` | `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` | `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` | **MATCH** |
+| `seed_data.py` | `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` | `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` | **MATCH** |
+| `fixture_manifest.json` | `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` | `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` | **MATCH** |
+| `fixture_pg_dump.sql` | `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` | `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` | **MATCH** |
+| `src/inference/prompt_template.txt` | `67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6` | `67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6` | **MATCH** |
+| `policy/access_matrix.yaml` | `85efd46ce237aea0dab8aac57af81c667320508ef841dbf79c5f2eebfefd42e9` | `85efd46ce237aea0dab8aac57af81c667320508ef841dbf79c5f2eebfefd42e9` | **MATCH** |
+| `semantic/catalog.yaml` | `2eb213d793819e51bbae100a842485adafcde16ea6026fcb918247e652b447ed` | `2eb213d793819e51bbae100a842485adafcde16ea6026fcb918247e652b447ed` | **MATCH** |
+| `AGENTS.md` | `a1d589b07bc2237f2932faace3fd23c7cd7ce4f789636ff59bf9424c703dc390` | `a1d589b07bc2237f2932faace3fd23c7cd7ce4f789636ff59bf9424c703dc390` | **MATCH** |
+| `pyproject.toml` | `a28dcde9202d86b19548cf883c9f4765538b89c94f2672e9ed9349d6c0ea6190` | `a28dcde9202d86b19548cf883c9f4765538b89c94f2672e9ed9349d6c0ea6190` | **MATCH** |
+
+---
+
+## 12. Security Risks, Mock Boundaries & Outstanding Prerequisites
+
+1. **Owner-Approved Scope Evidence Prerequisite:** `ScopeReviewStore` requires private evidence files and an externally owner-approved SHA-256 set. Controlled reference execution in production is unavailable until these genuine owner records and hash approvals are configured.
+2. **PostgreSQL Security Boundary:** Reference queries in controlled modes execute via `admin_source` outside PostgreSQL RLS; their scoping validity depends entirely on human-reviewed predicates and principal parameterization. Real live PostgreSQL RLS enforcement and credential isolation remain deferred to Gate R09.
+3. **Compatibility with Gate R07 Boundary:** The new `ScopeReviewStore` optional constructor parameter and `ReferenceReview.binding_sha256` property are cleanly encapsulated within `reference.py` and maintain full architectural compatibility with Gate R07's case-runner requirements.
+
+<!-- STARK_HANDOFF_V1
+{"gate": "R06", "implementation_ready": true, "phase": "verification", "status": "VERIFIED_APPROVE", "subject_sha": "0f0c6d318f23720277227794732e0f9a353c8210", "tests": {"failed": 0, "passed": 1319, "scope": "offline", "skipped": 58}}
+-->
