@@ -14,7 +14,14 @@ The sequence for R04–R09 is:
 3. **Antigravity verification:** independently rerun checks, append implementation
    verification to the same review, and update `ops/progress.json` plus
    `STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html` based on actual evidence.
-   Push to the existing PR and stop. Before the merge the status is
+   Push these changes to the existing PR. Also synchronize the separately
+   stored local browser file
+   `H:\\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html` to the final reviewed
+   canonical HTML (the tracked file has only one `.html` extension). Protect
+   independent local edits before copying, compare or hash the resulting files,
+   and report whether the H: file was actually updated. If the H: drive is
+   inaccessible, say so; GitHub publication does not update a `file://` URL.
+   Stop after reporting. Before merge the status is
    `VERIFIED — AWAITING MERGE`.
 4. **Owner:** review and merge or request corrections. At the next manual review
    refresh the previous gate's status to `MERGED` only with its actual GitHub
