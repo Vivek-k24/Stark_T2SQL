@@ -26,6 +26,18 @@ old handoff prompts where they conflict.
    `VERIFIED — AWAITING MERGE`; in the next manually requested update, use
    `MERGED` only after verifying an actual owner-approved merge SHA.
    Include `ops/progress.json` and the HTML in the same gate PR.
+   **Additionally, at EVERY Antigravity implementation-verification handoff**,
+   update the owner's browser copy at
+   `H:\\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html` from that reviewed
+   canonical HTML. This Windows path is separate from the repository's
+   single-extension `.html` file. Before overwriting it, protect any local
+   changes with a timestamped backup outside the repository and compare content;
+   if there are unexplained differences, ask the owner rather than discarding
+   their work. Verify the local copy contains the final updates (ideally
+   SHA-256-identical) and explicitly report `LOCAL_UI_UPDATED` or
+   `LOCAL_UI_NOT_UPDATED` with the reason. If the H: drive is inaccessible,
+   still publish the reviewed GitHub HTML, but never claim the local copy was
+   changed. Do not commit the double-extension copy or its backup.
    No agent should recreate a scheduler, automatic dispatch or post-merge bot.
 5. **Scope and safety**: Follow the gate issue's file ownership. Do not modify
    frozen R01/R02 artifacts, historical review logs, secrets or holdouts without
