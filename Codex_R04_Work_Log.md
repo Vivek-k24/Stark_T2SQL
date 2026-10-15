@@ -2,6 +2,7 @@
 
 Date: 2026-10-15 (America/Chicago). Assignment: [Issue #6](https://github.com/Vivek-k24/Stark_T2SQL/issues/6).
 Branch: `codex/r04-remediation`. PR target: `gemini/full-remediation-review`.
+Draft PR: [#19 — R04: govern semantic resolution, payroll metrics and business dates](https://github.com/Vivek-k24/Stark_T2SQL/pull/19).
 Implementation only; stop for the owner's manual Antigravity handoff.
 
 ## 1. Authoritative inputs and baseline
@@ -192,7 +193,8 @@ the actual 612/162 full run against the actual 468/177 baseline.
 
 ## 4. Scope, limitations and handoff
 
-Only the twelve approved paths listed above are changed. Frozen SHA-256 values
+Only the twelve approved paths listed above are changed relative to the pinned
+design commit. Frozen SHA-256 values
 remain unchanged:
 
 | Asset | SHA-256 |
@@ -211,9 +213,16 @@ contracts. N2/N5/N6 tests use public prepared attack families and fake downstrea
 responses; they are not scored adversarial cases or evidence of real model
 behavior. Authorized Payroll ambiguities still legitimately clarify.
 
-The implementation and this log will be committed/pushed on the existing shared
-branch and published in exactly one draft PR against the integration branch;
-actual publication references will be appended after GitHub confirms them.
+The implementation/tests and this log were committed and pushed as
+[`8463fc0f2d68adc9f87cb93040843b157483df78`](https://github.com/Vivek-k24/Stark_T2SQL/commit/8463fc0f2d68adc9f87cb93040843b157483df78)
+(`Implement R04 role-aware semantics and explicit date governance`).
+GitHub's work-log blob SHA matched the local Git object after that push.
+[Draft PR #19](https://github.com/Vivek-k24/Stark_T2SQL/pull/19) was then opened;
+GitHub confirmed OPEN/draft and the correct head/base. The PR's thirteen-file
+scope comprises the twelve implementation/test/log paths plus Antigravity's
+unchanged, already-approved design review from its existing design commit.
+The branch has exactly one PR. A log-only follow-up records these actual
+publication references without changing the tested source.
 
 **STOP for the owner's separate Antigravity instruction.** Do not launch a
 reviewer, merge, start R05 or restore automatic orchestration. Antigravity's
