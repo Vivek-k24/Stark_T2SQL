@@ -327,3 +327,204 @@ When prompted by the repository owner to implement Gate R05 on `codex/r05-remedi
 <!-- STARK_HANDOFF_V1
 {"gate": "R05", "implementation_ready": true, "phase": "design", "status": "APPROVE", "subject_sha": "0e7f643a3577d32ab4e579c4a66ef6666e6ab5fe", "tests": {"failed": 0, "passed": 0, "scope": "not_run", "skipped": 0}}
 -->
+
+---
+
+## 7. R05 — Independent Implementation Verification
+
+**Date:** 2026-10-15  
+**Gate:** R05 — Validator safety and ablation fidelity (ISS-06/13)  
+**Tracking Issue:** [GitHub Issue #7](https://github.com/Vivek-k24/Stark_T2SQL/issues/7)  
+**Implementation PR:** [Draft PR #20](https://github.com/Vivek-k24/Stark_T2SQL/pull/20)  
+**Shared Working Branch:** `codex/r05-remediation`  
+**Integration Baseline:** [`0e7f643a3577d32ab4e579c4a66ef6666e6ab5fe`](https://github.com/Vivek-k24/Stark_T2SQL/commit/0e7f643a3577d32ab4e579c4a66ef6666e6ab5fe)  
+**Codex Commits Audited:**
+- [`e0dc09fe54f00e9622479d00163fe82ce4aa4af9`](https://github.com/Vivek-k24/Stark_T2SQL/commit/e0dc09fe54f00e9622479d00163fe82ce4aa4af9) (`fix(r05): validate reviewed COUNT and negation parser layouts`)
+- [`1128803f4e5c772425971990cbae0d9bb75ae893`](https://github.com/Vivek-k24/Stark_T2SQL/commit/1128803f4e5c772425971990cbae0d9bb75ae893) (`docs(r05): record draft PR and resumed handoff`)  
+**Work Log:** [`Codex_R05_Work_Log.md`](Codex_R05_Work_Log.md)  
+**Verification Verdict:** **APPROVE** (All requirements, findings, and acceptance criteria verified)
+
+---
+
+### A. Independent Verification of Implementation
+
+Antigravity independently audited Codex's code changes and test additions across all 9 modified/created files in PR #20:
+
+#### 1. Resolution of Finding R05-F1: COUNT `big_int=True` Compatibility & Malformed Argument Guards
+- **Audited Components:** `src/stark_t2sql/security/function_policy.py` (`_arguments`), `src/stark_t2sql/security/validator.py` (`_ASTReview._walk_all`).
+- **Audit Findings:**
+  - `function_policy.py` line 186 now strictly validates:
+    ```python
+    if "big_int" in args and not (
+        rule.parser_class == "Count" and rule.sql_name == "count" and type(args["big_int"]) is bool
+    ):
+        raise FunctionPolicyViolation("Only an exact COUNT boolean metadata flag is reviewed.")
+    ```
+  - The previous blanket rejection of `big_int` was removed.
+  - `validator.py` lines 469-470 enforce AST class isolation:
+    ```python
+    if "big_int" in node.args and type(node) is not getattr(self.exp, "Count", None):
+        raise _Rejected(ValidationRuleCode.UNSUPPORTED_ARGUMENT, "COUNT metadata appears on another AST class.")
+    ```
+  - In `_walk_all` (lines 489-492), callable scalar arguments explicitly permit `big_int` with `type(value) is bool` when `rule.parser_class == "Count"`.
+  - Negative tests in `tests/test_r05_argument_safety.py` independently confirm that non-boolean values (`None`, `0`, `1`, `""`, `"true"`, `[]`, `{}`) for `big_int` are rejected with `V-FUNCTION` or `V-UNSUPPORTED-ARGUMENT`.
+  - **Verdict:** Fully satisfied.
+
+#### 2. Resolution of Finding R05-F2: Negation Handling (`negate` on `Is`, `Like`, `ILike`)
+- **Audited Components:** `src/stark_t2sql/security/validator.py` (`_SHAPES`, `_guard_structure`, `_walk_all`).
+- **Audit Findings:**
+  - `NodeShape("Is", frozenset({"this", "expression", "negate"}), frozenset({"negate"}))`
+  - `NodeShape("Like", frozenset({"this", "expression", "negate"}), frozenset({"negate"}))`
+  - `NodeShape("ILike", frozenset({"this", "expression", "negate"}), frozenset({"negate"}))`
+  - Structure check added: `if name in {"Is", "Like", "ILike"} and "negate" in args and type(args["negate"]) is not bool: raise _Rejected(...)`.
+  - Structural guard added: `if "negate" in node.args and (shape is None or shape.parser_class not in {"Is", "Like", "ILike"}): raise _Rejected(...)`.
+  - Real SQL queries containing `IS NOT NULL`, `NOT LIKE`, `NOT ILIKE`, and wrapped `NOT (manager_id IS NULL)` pass positive and idempotence validation.
+  - **Verdict:** Fully satisfied.
+
+#### 3. Resolution of Finding R05-F3: Narrowing to 59 Admitted Shapes and 27 Observed Functions
+- **Audited Components:** `tests/fixtures/parser_approval_sqlglot_30_22_0.json`, `tests/conftest.py`, `tests/test_r05_parser_evidence.py`.
+- **Audit Findings:**
+  - **59 Admitted Shapes:** All proposed structural classes except `Div` are admitted. In `sqlglot 30.22.0`, PostgreSQL parsing emits `Div(typed=True)`. The existing validator intentionally rejects `typed` and `safe` flags on division to prevent dialect smuggling. Codex preserved this safety guard and excluded `Div` from the admitted test profile. This exclusion was independently audited and confirmed safe.
+  - **27 Observed Functions:** Codex admitted 22 known function classes and 5 genuine Anonymous function layouts (`age`, `statement_timestamp`, `transaction_timestamp`, `clock_timestamp`, `timeofday`).
+  - **16 Excluded Functions:** The other 9 proposed Anonymous layouts (`count`, `sum`, `avg`, `min`, `max`, `lower`, `date_trunc`, `percentile_cont`, `now`) normalize to known classes in `sqlglot 30.22.0` PostgreSQL parsing. Codex properly excluded them from the profile rather than using synthetic AST substitutions. Additionally, `date-trunc-known-v1` (which parses as `TimestampTrunc` in Postgres dialect) and the 6 unavailable camel-case classes (`LocalTimestamp`, `Age`, `StatementTimestamp`, `TransactionTimestamp`, `ClockTimestamp`, `TimeOfDay`) are cleanly excluded.
+  - The 16 excluded rules cleanly skip contract tests (yielding 32 honest skips across positive and negative contracts), while all 27 admitted functions pass both positive roundtrip and negative mutation tests.
+  - **Verdict:** Fully satisfied.
+
+#### 4. Resolution of Finding R05-F4 & R05-F5: Ablation Fidelity & Stopping Layer Attribution
+- **Audited Components:** `src/stark_t2sql/security/validator.py` (`HarnessSafetyReviewer`), `tests/test_execution_resources.py`.
+- **Audit Findings:**
+  - `HarnessSafetyReviewer` docstring was updated to accurately state that `NO_VALIDATOR` and `UNCONTROLLED` relax role table visibility to fixture tables.
+  - Tests in `test_execution_resources.py` verify that unsafe SQL (`SET app.principal_id='1'`, `DROP TABLE`, multi-statement, modifying CTEs, catalog queries, locks) in `NO_VALIDATOR` or `UNCONTROLLED` mode raises `HarnessSafetyStopError` with `StoppingLayer.HARNESS` before any connection is leased or budget checked.
+  - In `FULL` mode, out-of-entitlement table access (e.g. Sales Manager selecting `employee_compensation`) raises `SQLValidationError` with `ValidationRuleCode.TABLE` and `StoppingLayer.VALIDATOR` (`BLOCKED_VALIDATOR`).
+  - In `NO_VALIDATOR` mode, candidate queries on unauthorized tables pass harness review, route to PostgreSQL under the persona's login role (`app_sales_mgr`), set session identity (`app.principal_id`), and return SQLSTATE `42501` (`BLOCKED_DB`, `StoppingLayer.DATABASE`).
+  - In `UNCONTROLLED` mode, queries route to the baseline evaluation login without persona session settings.
+  - **Verdict:** Fully satisfied.
+
+#### 5. Revision Bump & Production Fail-Closed Boundary
+- Both revisions were bumped to `fr5-validator-r05-1` and `fr5-function-r05-1`.
+- `ParserReviewApproval` requires exact revision matching.
+- `ReviewedSQLValidator(matrix, approval=None)` fails closed with `ValidationRuleCode.REVIEW_REQUIRED` and `ReasonCode.MISSING_DEPENDENCY`.
+- The test profile fixture in `tests/fixtures/parser_approval_sqlglot_30_22_0.json` is loaded **only** by pytest in `tests/conftest.py`. Production source code contains no default approval.
+- **Verdict:** Fully satisfied.
+
+---
+
+### B. Narrow Authorized UI Test Correction (`tests/test_interim_ui.py`)
+
+Under the repository owner's narrow authorization for this verification handoff, `tests/test_interim_ui.py` line 23 was updated from:
+```python
+assert all(m["state"]=="MERGED" and m["live_postgresql"]=="UNVERIFIED" for m in data["milestones"])
+```
+to:
+```python
+assert all(m["live_postgresql"]=="UNVERIFIED" for m in data["milestones"])
+assert all(m["state"]=="MERGED" for m in data["milestones"][:-1])
+assert data["milestones"][-1]["state"] in {"MERGED", "VERIFIED — AWAITING MERGE"}
+```
+**Rationale:** Predecessor milestones (R01, R02, R03, R04) have been approved and merged, and are verified as `MERGED`. The active milestone under review (R05) is in state `VERIFIED — AWAITING MERGE` prior to owner merge approval. This minimal correction allows predecessor gates to be verified separately from the pending gate without weakening any health, offline evidence, or UI assertions.
+
+---
+
+### C. Independently Measured Test Results
+
+All test suites were independently executed using Python 3.12.10, pytest 8.3.5, and `sqlglot 30.22.0` with `$env:STARK_TEST_ENABLE_DB_INTEGRATION='0'` and `$env:PYTHONPATH='src;.'`:
+
+1. **Targeted Validator & Execution Suite:**
+   ```powershell
+   pytest tests/test_validator_contracts.py tests/test_execution_resources.py -q -ra
+   ```
+   - **Result:** **237 passed, 32 skipped, 0 failed** in 0.98s.
+   - (32 skips represent the 16 excluded function layouts parameterized across positive and negative contracts).
+
+2. **Parser Evidence and Argument Safety Suite:**
+   ```powershell
+   pytest tests/test_r05_parser_evidence.py tests/test_r05_argument_safety.py -q -ra
+   ```
+   - **Result:** **345 passed, 0 skipped, 0 failed** in 1.21s.
+
+3. **Interim UI Suite:**
+   ```powershell
+   pytest tests/test_interim_ui.py -v
+   ```
+   - **Result:** **5 passed, 0 skipped, 0 failed** in 2.61s.
+
+4. **Full Offline Regression Test Suite:**
+   ```powershell
+   pytest tests -q -ra
+   ```
+   - **Result:** **1,112 passed, 58 skipped, 0 failed** in 83.42s.
+   - **Zero failures across the entire codebase.**
+
+#### Skip Reconciliation (58 Skips Total):
+- 32 skips in `test_validator_contracts.py` (16 excluded function representations).
+- 16 skips in `test_evaluation_contracts.py` (missing wall-clock review inputs `STARK_TEST_WALLCLOCK_REVIEW_PATH`).
+- 1 skip in `conftest.py` (missing adversarial scope input `STARK_TEST_ADVERSARIAL_SCOPE_PATH`).
+- 1 skip in `conftest.py` (missing reference review input `STARK_TEST_REFERENCE_REVIEW_PATH`).
+- 6 skips in `test_database_integration.py` (local PostgreSQL integration disabled).
+- 1 skip in `test_runner_contracts.py` (local PostgreSQL integration disabled).
+- 1 skip in `test_seed_generation.py` (live PostgreSQL reset disabled).
+
+---
+
+### D. Acceptance Criteria Matrix Verification
+
+| Criterion ID | Target Requirement | Measured Outcome | Verdict |
+| :--- | :--- | :--- | :--- |
+| **R05-T01** | Safe SELECT Queries (`GOOD_SQL`) | All 13 queries in `GOOD_SQL` accepted; AST regeneration idempotent. | **PASS** |
+| **R05-T02** | Dangerous SQL Rejection (`BAD_SQL`) | All 36 queries in `BAD_SQL` rejected; `regenerated_sql` is None. | **PASS** |
+| **R05-T03** | Count with `big_int=True` | `COUNT(*)`, `COUNT(col)`, `COUNT(DISTINCT col)` accept; malformed flags reject. | **PASS** |
+| **R05-T04** | Negated Operators (`IS NOT NULL`, `NOT LIKE`, `NOT ILIKE`) | All 3 negated operators accept with `negate=True` boolean validation. | **PASS** |
+| **R05-T05** | Filter Aggregate Syntax | `COUNT(*) FILTER (WHERE ...)` accepts, reviews, and roundtrips. | **PASS** |
+| **R05-T06** | Observed Function Positive Contracts | All 27 genuinely observed PostgreSQL function representations pass positive tests. | **PASS** |
+| **R05-T07** | Function Argument Strictness | All 27 admitted functions reject unreviewed/malformed arguments. | **PASS** |
+| **R05-T08** | Offline Parser Approval Profile | Test-only profile loads via `conftest.py`; 104 previously skipped tests pass offline. | **PASS** |
+| **R05-T09** | `FULL` Mode Table Entitlements | Sales Manager accessing `employee_compensation` rejected with `TABLE` at `VALIDATOR`. | **PASS** |
+| **R05-T10** | `NO_VALIDATOR` Structural Safety | Unsafe statements in `NO_VALIDATOR` halt with `HARNESS_SAFETY_STOP` at `HARNESS`. | **PASS** |
+| **R05-T11** | `NO_VALIDATOR` Engine ACL Denial | Candidate on unauthorized table routes under persona login; returns `BLOCKED_DB` (42501). | **PASS** |
+| **R05-T12** | CTE Table Shadowing Prevention | CTEs shadowing `employees` or `employee_compensation` rejected (`CTE_SHADOW`). | **PASS** |
+| **R05-T13** | Column Enforcement Reserved to DB | Unauthorized column on authorized table passes validator; reserved to DB grants. | **PASS** |
+| **R05-T14** | Absence of Review Fails Closed | `approval=None` fails closed with `REVIEW_REQUIRED` / `MISSING_DEPENDENCY`. | **PASS** |
+
+---
+
+### E. Progress Tracking & Local Browser HTML Synchronization
+
+1. **`ops/progress.json` Updated:**
+   - `github_base_sha` updated to `0e7f643a3577d32ab4e579c4a66ef6666e6ab5fe`.
+   - Gate R04 marked `MERGED` with merge SHA `0e7f643a3577d32ab4e579c4a66ef6666e6ab5fe` and `merged_at: "2026-10-15T06:37:14Z"`.
+   - Gate R05 added with state `VERIFIED — AWAITING MERGE`, PR #20, test results `1112 passed / 58 skipped (offline)`, and evidence SHA-256 `bccea6a6071021b6088d8b2d2ad0a8092138136aa83b48e874fbcc7825dea72e`.
+2. **Canonical Repository HTML Regenerated:**
+   - Executed `python -m ops.progress`.
+   - Normalized line endings to LF. Only the progress evidence block changed in git diff.
+3. **Local Browser HTML Synchronized (`H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`):**
+   - Timestamped backup created outside repository: `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html.bak_20261015_160107`.
+   - Legacy browser file updated from reviewed canonical HTML.
+   - SHA-256 verified identical: `7cd526d2ba795b5928a19ff3cb28b262d259a9a15ee3b0758a690601d29471fd`.
+   - Status: **`LOCAL_UI_UPDATED`**.
+
+---
+
+### F. Frozen Asset Verifications
+
+Working tree blob identities match the baseline:
+- `schema.sql`: `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` (FROZEN)
+- `seed_data.py`: `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` (FROZEN)
+- `fixture_manifest.json`: `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` (FROZEN)
+- `fixture_pg_dump.sql`: `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` (FROZEN)
+- `src/inference/prompt_template.txt`: `67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6` (FROZEN)
+- `policy/access_matrix.yaml`: `85efd46ce237aea0dab8aac57af81c667320508ef841dbf79c5f2eebfefd42e9` (FROZEN)
+- `semantic/catalog.yaml`: `2eb213d793819e51bbae100a842485adafcde16ea6026fcb918247e652b447ed` (FROZEN)
+- `AGENTS.md`: `a1d589b07bc2237f2932faace3fd23c7cd7ce4f789636ff59bf9424c703dc390` (FROZEN)
+- `pyproject.toml`: `a28dcde9202d86b19548cf883c9f4765538b89c94f2672e9ed9349d6c0ea6190` (FROZEN)
+
+---
+
+### G. Outstanding Limitations & Security Boundary Notes
+
+1. **Parser Approval Profile is TEST-ONLY:** The authored JSON in `tests/fixtures/parser_approval_sqlglot_30_22_0.json` is strictly an empirical test fixture and does not constitute production human sign-off. Production composition without human approval remains fail-closed.
+2. **PostgreSQL Security Boundary:** The SQL Validator operates as defense-in-depth. PostgreSQL engine grants, ACLs, connection limits, and RLS policies remain the definitive security boundary. Live PostgreSQL database validation is explicitly deferred to Gate R09.
+
+<!-- STARK_HANDOFF_V1
+{"gate": "R05", "implementation_ready": true, "phase": "verification", "status": "VERIFIED_APPROVE", "subject_sha": "1128803f4e5c772425971990cbae0d9bb75ae893", "tests": {"failed": 0, "passed": 1112, "scope": "offline", "skipped": 58}}
+-->
+
