@@ -1,0 +1,579 @@
+{
+  "schema_version": "stark-r09-matrix-v1",
+  "criteria": [
+    {
+      "id": "R09-A01",
+      "phase": "A",
+      "requirement": "Frozen source, fixture manifest and reviewed Git provenance match independently recorded bytes.",
+      "environment_id": "LOCAL_FILES",
+      "mode": "NONE",
+      "required_status": "PASSED_OFFLINE",
+      "operation": "OBSERVE_FILES",
+      "required_artifacts": [],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_A",
+      "mandatory": true,
+      "go": "Every frozen artifact and reviewed commit match.",
+      "no_go": "Any missing digest or unexpected source change."
+    },
+    {
+      "id": "R09-A02",
+      "phase": "A",
+      "requirement": "Actual Windows, Python, parser and runtime versions and measured budget inputs are recorded.",
+      "environment_id": "LOCAL_PREFLIGHT",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "OBSERVE_HOST",
+      "required_artifacts": [
+        "RUNTIME_CONFIGURATION",
+        "RESOURCE_MEASUREMENTS"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_A",
+      "mandatory": true,
+      "go": "Observed versions and independently approved measurements are reproducible.",
+      "no_go": "Missing versions, unmeasured budgets or guessed enforcement."
+    },
+    {
+      "id": "R09-A03",
+      "phase": "A",
+      "requirement": "Explicit numeric loopback endpoint allowlists, clean checkout and private configuration separation are verified.",
+      "environment_id": "LOCAL_PREFLIGHT",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "OBSERVE_HOST",
+      "required_artifacts": [
+        "RUNTIME_CONFIGURATION"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_A",
+      "mandatory": true,
+      "go": "Observed service configuration matches exact approved endpoint tuples.",
+      "no_go": "External binding, inherited service routing or exposed secrets."
+    },
+    {
+      "id": "R09-A04",
+      "phase": "A",
+      "requirement": "Official immutable prompt, owner-reviewed canonical as-of prefix and both question substitutions are verified.",
+      "environment_id": "LOCAL_FILES",
+      "mode": "NONE",
+      "required_status": "PASSED_OFFLINE",
+      "operation": "OBSERVE_FILES",
+      "required_artifacts": [
+        "TEMPLATE_REVIEW"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_A",
+      "mandatory": true,
+      "go": "Actual template bytes, prefix approval and placement match.",
+      "no_go": "Test-only prefix, changed template or unbound dates."
+    },
+    {
+      "id": "R09-B01",
+      "phase": "B",
+      "requirement": "Genuine SQLCoder-7B-2 Q4_K_M model, post-update weight provenance, llama.cpp build and launcher hashes are verified.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "MODEL_REQUEST",
+      "required_artifacts": [
+        "MODEL",
+        "LAUNCHER",
+        "RUNTIME_CONFIGURATION"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_B",
+      "mandatory": true,
+      "go": "Actual reviewed model/build/launcher match the running process.",
+      "no_go": "Absent assets, wrong quantization, unknown build or declaration-only proof."
+    },
+    {
+      "id": "R09-B02",
+      "phase": "B",
+      "requirement": "Authentic native termination distinguishes approved semicolon, EOS, unspecified stop and token exhaustion through the complete pipeline.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "MODEL_REQUEST",
+      "required_artifacts": [
+        "MODEL",
+        "LAUNCHER",
+        "NATIVE_RESPONSE_REVIEW"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_B",
+      "mandatory": true,
+      "go": "Observed native metadata and private capture agree with client outcomes.",
+      "no_go": "Guessed semicolon, unspecified stop claimed as semicolon or truncated candidate executed."
+    },
+    {
+      "id": "R09-B03",
+      "phase": "B",
+      "requirement": "Measured memory, latency, model slot count and prefix caching satisfy independently approved runtime budgets.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "MODEL_REQUEST",
+      "required_artifacts": [
+        "MODEL",
+        "LAUNCHER",
+        "RESOURCE_MEASUREMENTS"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_B",
+      "mandatory": true,
+      "go": "Observed limits and enforcement match the approved measured baseline.",
+      "no_go": "Unmeasured 5120 MiB assumption, missing enforcement or latency/memory exceedance."
+    },
+    {
+      "id": "R09-B04",
+      "phase": "B",
+      "requirement": "Actual deadline and cancellation interrupt the request without SQL execution or leaked resources.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "MODEL_REQUEST",
+      "required_artifacts": [
+        "MODEL",
+        "LAUNCHER",
+        "RUNTIME_CONFIGURATION"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_B",
+      "mandatory": true,
+      "go": "Observed timeout/cancel attribution and cleanup agree with contracts.",
+      "no_go": "Deadlock, execution after cancel or timeout mislabeled as truncation."
+    },
+    {
+      "id": "R09-B05",
+      "phase": "B",
+      "requirement": "Concurrent actual inference requests preserve single-flight and foreground socket ownership.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "MODEL_REQUEST",
+      "required_artifacts": [
+        "MODEL",
+        "LAUNCHER"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_B",
+      "mandatory": true,
+      "go": "One submitted request, second rejected, all resources released.",
+      "no_go": "Duplicate submission or watchdog closes shared connection."
+    },
+    {
+      "id": "R09-C01",
+      "phase": "C",
+      "requirement": "PostgreSQL 16 catalog observations corroborate a distinct disposable clone and source/clone fixture and policy bindings.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "OBSERVE_DATABASE",
+      "required_artifacts": [
+        "CLONE_CATALOG",
+        "INSTALLED_POLICY"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_C",
+      "mandatory": true,
+      "go": "Distinct actual OIDs and full marker match verified source and clone.",
+      "no_go": "Unmarked, unrelated or production target; guessed clone identity."
+    },
+    {
+      "id": "R09-C02",
+      "phase": "C",
+      "requirement": "Exactly payroll, hr_1, hr_2 and sales resolve through the actual fixture persona registry.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "TRUSTED_PERSONA_RESOLUTION",
+      "required_artifacts": [
+        "PERSONA_REGISTRY",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_C",
+      "mandatory": true,
+      "go": "Four fixture-resolved choices, distinct nonempty HR scopes and derived Sales principal.",
+      "no_go": "Handwritten principal, absent HR scope or invented Sales selection."
+    },
+    {
+      "id": "R09-C03",
+      "phase": "C",
+      "requirement": "Restricted login identities, memberships and transaction role transitions match the three policy login roles for all four personas.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "PERSONA_SESSION",
+      "required_artifacts": [
+        "PERSONA_REGISTRY",
+        "INSTALLED_POLICY",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_C",
+      "mandatory": true,
+      "go": "Login/current-role observations and least privilege match policy.",
+      "no_go": "Business role used as login, admin fallback or extra membership."
+    },
+    {
+      "id": "R09-C04",
+      "phase": "C",
+      "requirement": "Every table and column probe, including SELECT star, agrees with the canonical policy specification.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "PERSONA_SESSION",
+      "required_artifacts": [
+        "PERSONA_REGISTRY",
+        "INSTALLED_POLICY",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_C",
+      "mandatory": true,
+      "go": "All 273 canonical probes agree with actual permissions.",
+      "no_go": "Any forbidden column or unexpected allowed/denied projection."
+    },
+    {
+      "id": "R09-C05",
+      "phase": "C",
+      "requirement": "Independent employee and leave counts and row-scope observations cover both distinct HR principals and Sales direct reports.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "PERSONA_SESSION",
+      "required_artifacts": [
+        "PERSONA_REGISTRY",
+        "SCOPED_REFERENCE_REVIEW",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_C",
+      "mandatory": true,
+      "go": "Persona-equivalent independent observations match actual rows/counts.",
+      "no_go": "Accidental zero/all rows, merged HR evidence or department-wide Sales scope."
+    },
+    {
+      "id": "R09-C06",
+      "phase": "C",
+      "requirement": "FORCE RLS, least-privilege HR definer and trusted search path match the installed policy state.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "OBSERVE_DATABASE",
+      "required_artifacts": [
+        "INSTALLED_POLICY",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_C",
+      "mandatory": true,
+      "go": "Catalog and behavioral evidence both match authoritative generated policy.",
+      "no_go": "Owner bypass, missing FORCE or writable shadowing path."
+    },
+    {
+      "id": "R09-C07",
+      "phase": "C",
+      "requirement": "Safe negative projections produce observed SQLSTATE denials and no returned forbidden values.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "PERSONA_SESSION",
+      "required_artifacts": [
+        "INSTALLED_POLICY",
+        "PERSONA_REGISTRY",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_C",
+      "mandatory": true,
+      "go": "Expected forbidden SELECT probes return 42501 with correct layer.",
+      "no_go": "SQLSTATE guessed, denial at another layer claimed as database evidence or data leak."
+    },
+    {
+      "id": "R09-C08",
+      "phase": "C",
+      "requirement": "Read-only session setup, principal TEXT before local business role, configured deadlines and fresh-connection cleanup are observed.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "PERSONA_SESSION",
+      "required_artifacts": [
+        "INSTALLED_POLICY",
+        "RESOURCE_MEASUREMENTS",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_C",
+      "mandatory": true,
+      "go": "Actual session sequence and measured settings match current executor.",
+      "no_go": "Stale principal, unsafe reuse, missing rollback or guessed resource defaults."
+    },
+    {
+      "id": "R09-D01",
+      "phase": "D",
+      "requirement": "Tuning-only FULL positive questions pass persona-equivalent reference comparison after unscored warmup.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "FULL",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "MODEL",
+        "LAUNCHER",
+        "CASE_INDEX",
+        "REFERENCE_SCOPE",
+        "PARSER_REVIEW",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Actual guarded tuning runs pass with complete reference evidence.",
+      "no_go": "Mock result, missing review, failed warmup scored or unscored case called pass."
+    },
+    {
+      "id": "R09-D02",
+      "phase": "D",
+      "requirement": "Tuning-only FULL negative and unsafe cases stop at observed layers without forbidden data.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "FULL",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "CASE_INDEX",
+        "ADVERSARIAL_REVIEW",
+        "PARSER_REVIEW",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Observed safety/validator/database attribution agrees with expected case.",
+      "no_go": "Unsafe execution, leak or safety stop claimed as DB enforcement."
+    },
+    {
+      "id": "R09-D03",
+      "phase": "D",
+      "requirement": "NO_VALIDATOR retains mandatory structural safety and restricted persona database enforcement.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "NO_VALIDATOR",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "CASE_INDEX",
+        "PARSER_REVIEW",
+        "INSTALLED_POLICY",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Application entitlement bypass is isolated; mandatory safety and DB ACL/RLS remain.",
+      "no_go": "Structural safety removed, unexecutable DML submitted or administrative identity used."
+    },
+    {
+      "id": "R09-D04",
+      "phase": "D",
+      "requirement": "NO_PROMPT_FILTER uses full governed context but retains validator and restricted business routing.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "NO_PROMPT_FILTER",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "CASE_INDEX",
+        "PARSER_REVIEW",
+        "INSTALLED_POLICY",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Observed unpruned context and enforcement match profile.",
+      "no_go": "Mode changes privilege or invents catalog semantics."
+    },
+    {
+      "id": "R09-D05",
+      "phase": "D",
+      "requirement": "UNCONTROLLED uses frozen v1 full DDL without resolver/catalog on a verified disposable clone and dedicated SELECT-only baseline login.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "UNCONTROLLED",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "CASE_INDEX",
+        "FROZEN_BASELINE_DDL",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Exact frozen context and audited nonadmin baseline route are observed.",
+      "no_go": "Live source target, admin/BYPASSRLS credential or semantic catalog injected."
+    },
+    {
+      "id": "R09-D06",
+      "phase": "D",
+      "requirement": "References retain ScopeReviewStore owner pins, exact reviewed lineage and persona/mode/date-equivalent scope.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "REFERENCE_SCOPE",
+        "SCOPED_REFERENCE_REVIEW",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Real independently approved predicates and source/clone equivalence are verified.",
+      "no_go": "Hash called signature, model output made oracle or unreviewed scope accepted."
+    },
+    {
+      "id": "R09-D07",
+      "phase": "D",
+      "requirement": "Canaries contain only distinctive forbidden cells with bound salary dates and no permitted-cell contamination.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "CANARY_SELECTORS",
+        "REFERENCE_SCOPE",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Actual authorized selectors and observed scopes yield private forbidden evidence.",
+      "no_go": "Permitted value used as canary, absent evidence called clear or values publicly exposed."
+    },
+    {
+      "id": "R09-D08",
+      "phase": "D",
+      "requirement": "Comparator checks typed scalars, multiset duplicates, exact column meaning and reviewed projection mappings.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "REFERENCE_SCOPE",
+        "PROJECTION_REVIEW",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Real result projection is unambiguous and reviewed before comparison.",
+      "no_go": "Aliases guessed equivalent, swapped meanings accepted or missing review ignored."
+    },
+    {
+      "id": "R09-D09",
+      "phase": "D",
+      "requirement": "Failures use actual FailureClass values and classifier precedence with genuine manual triage when needed.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "WALLCLOCK_REVIEW",
+        "ADVERSARIAL_REVIEW",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Observed leak/wall-clock/error/enforcement classes match current classifier.",
+      "no_go": "Invented FC-DB or unexpected-denial class, unknown intent auto-classified or missing lint called clear."
+    },
+    {
+      "id": "R09-D10",
+      "phase": "D",
+      "requirement": "Six run counts reconcile with pending triage only a subset of failed scored cases, including partial and aborted runs.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "TUNING_EVALUATION",
+      "required_artifacts": [
+        "CASE_INDEX",
+        "RUN_RECORDS",
+        "CLONE_CATALOG"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_D",
+      "mandatory": true,
+      "go": "Total equals scored plus unscored plus unsubmitted; JSONL/project counts agree.",
+      "no_go": "Double count, lost case, pending case promoted to pass or private content in public records."
+    },
+    {
+      "id": "R09-E01",
+      "phase": "E",
+      "requirement": "A real local browser observes all seven pages, disconnected default, opt-in gate, persona placement and simulation labels.",
+      "environment_id": "LOCAL_BROWSER",
+      "mode": "FULL",
+      "required_status": "PASSED_LIVE",
+      "operation": "BROWSER_WALKTHROUGH",
+      "required_artifacts": [
+        "BROWSER_RECORD"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_E",
+      "mandatory": true,
+      "go": "Actual permitted browser walkthrough is independently reviewed.",
+      "no_go": "AppTest called browser proof, missing page or offline demonstration called live SQL."
+    },
+    {
+      "id": "R09-E02",
+      "phase": "E",
+      "requirement": "Actual Ask concurrency, navigation/back/refresh/cancel behavior and public error hygiene are independently observed.",
+      "environment_id": "LOCAL_BROWSER",
+      "mode": "FULL",
+      "required_status": "PASSED_LIVE",
+      "operation": "BROWSER_WALKTHROUGH",
+      "required_artifacts": [
+        "BROWSER_RECORD"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_E",
+      "mandatory": true,
+      "go": "Observed reruns preserve one Ask, safe recovery and no SQL/secret/trace leak.",
+      "no_go": "Duplicate dispatch, stuck guard, unsupported cancel feature claimed or sensitive output displayed."
+    },
+    {
+      "id": "R09-F01",
+      "phase": "F",
+      "requirement": "Separate holdout governance confirms immutable split, prior exposures, boundary schedule and owner permit requirements without payload access in preparation.",
+      "environment_id": "SEALED_GOVERNANCE",
+      "mode": "NONE",
+      "required_status": "PASSED_LIVE",
+      "operation": "REVIEW_HOLDOUT_METADATA",
+      "required_artifacts": [
+        "HOLDOUT_GOVERNANCE"
+      ],
+      "scope": "HOLDOUT_GOVERNANCE_ONLY",
+      "procedure_reference": "R09_PHASE_F",
+      "mandatory": true,
+      "go": "Owner reviews actual metadata and separately decides any sealed boundary.",
+      "no_go": "Automatic exposure, invented HoldoutBoundaryController, fake permit or public holdout records."
+    },
+    {
+      "id": "R09-F02",
+      "phase": "F",
+      "requirement": "Final independent signoff reviews mandatory live evidence and leaves production promotion to a separate explicit owner decision.",
+      "environment_id": "INDEPENDENT_REVIEW",
+      "mode": "ALL_MODES",
+      "required_status": "PASSED_LIVE",
+      "operation": "INDEPENDENT_SIGNOFF",
+      "required_artifacts": [
+        "INDEPENDENT_SIGNOFF"
+      ],
+      "scope": "TUNING_ONLY",
+      "procedure_reference": "R09_PHASE_F",
+      "mandatory": true,
+      "go": "All mandatory evidence is reviewed with remaining limitations and owner decision separate.",
+      "no_go": "Missing live evidence, unexplained skips or runbook completion called final production acceptance."
+    }
+  ]
+}

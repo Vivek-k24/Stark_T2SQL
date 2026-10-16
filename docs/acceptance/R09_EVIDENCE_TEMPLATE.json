@@ -1,0 +1,686 @@
+{
+  "schema_version": "stark-r09-evidence-v1",
+  "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+  "artifacts": {
+    "schema": "f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3",
+    "seed": "ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf",
+    "fixture_manifest": "fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e",
+    "fixture_dump": "859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4",
+    "policy": "85efd46ce237aea0dab8aac57af81c667320508ef841dbf79c5f2eebfefd42e9",
+    "catalog": "2eb213d793819e51bbae100a842485adafcde16ea6026fcb918247e652b447ed",
+    "template": "67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6",
+    "frd": "e5814c87f080f8f2bc23c4b7c8299049c9597b3714eb450ad0670ce540f5c162"
+  },
+  "persona_logins": {
+    "payroll": {
+      "business_role": "app_payroll",
+      "login_role": "stark_payroll_login"
+    },
+    "hr_1": {
+      "business_role": "app_hr_bp",
+      "login_role": "stark_hr_login"
+    },
+    "hr_2": {
+      "business_role": "app_hr_bp",
+      "login_role": "stark_hr_login"
+    },
+    "sales": {
+      "business_role": "app_sales_mgr",
+      "login_role": "stark_sales_login"
+    }
+  },
+  "items": [
+    {
+      "criterion_id": "R09-A01",
+      "requirement": "Frozen source, fixture manifest and reviewed Git provenance match independently recorded bytes.",
+      "environment_id": "LOCAL_FILES",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_A",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-A02",
+      "requirement": "Actual Windows, Python, parser and runtime versions and measured budget inputs are recorded.",
+      "environment_id": "LOCAL_PREFLIGHT",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_A",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-A03",
+      "requirement": "Explicit numeric loopback endpoint allowlists, clean checkout and private configuration separation are verified.",
+      "environment_id": "LOCAL_PREFLIGHT",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_A",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-A04",
+      "requirement": "Official immutable prompt, owner-reviewed canonical as-of prefix and both question substitutions are verified.",
+      "environment_id": "LOCAL_FILES",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_A",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-B01",
+      "requirement": "Genuine SQLCoder-7B-2 Q4_K_M model, post-update weight provenance, llama.cpp build and launcher hashes are verified.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_B",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-B02",
+      "requirement": "Authentic native termination distinguishes approved semicolon, EOS, unspecified stop and token exhaustion through the complete pipeline.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_B",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-B03",
+      "requirement": "Measured memory, latency, model slot count and prefix caching satisfy independently approved runtime budgets.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_B",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-B04",
+      "requirement": "Actual deadline and cancellation interrupt the request without SQL execution or leaked resources.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_B",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-B05",
+      "requirement": "Concurrent actual inference requests preserve single-flight and foreground socket ownership.",
+      "environment_id": "LOCAL_MODEL",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_B",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-C01",
+      "requirement": "PostgreSQL 16 catalog observations corroborate a distinct disposable clone and source/clone fixture and policy bindings.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_C",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-C02",
+      "requirement": "Exactly payroll, hr_1, hr_2 and sales resolve through the actual fixture persona registry.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_C",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-C03",
+      "requirement": "Restricted login identities, memberships and transaction role transitions match the three policy login roles for all four personas.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_C",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-C04",
+      "requirement": "Every table and column probe, including SELECT star, agrees with the canonical policy specification.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_C",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-C05",
+      "requirement": "Independent employee and leave counts and row-scope observations cover both distinct HR principals and Sales direct reports.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_C",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-C06",
+      "requirement": "FORCE RLS, least-privilege HR definer and trusted search path match the installed policy state.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_C",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-C07",
+      "requirement": "Safe negative projections produce observed SQLSTATE denials and no returned forbidden values.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_C",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-C08",
+      "requirement": "Read-only session setup, principal TEXT before local business role, configured deadlines and fresh-connection cleanup are observed.",
+      "environment_id": "POSTGRES_CLONE",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_C",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D01",
+      "requirement": "Tuning-only FULL positive questions pass persona-equivalent reference comparison after unscored warmup.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "FULL",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D02",
+      "requirement": "Tuning-only FULL negative and unsafe cases stop at observed layers without forbidden data.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "FULL",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D03",
+      "requirement": "NO_VALIDATOR retains mandatory structural safety and restricted persona database enforcement.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "NO_VALIDATOR",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D04",
+      "requirement": "NO_PROMPT_FILTER uses full governed context but retains validator and restricted business routing.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "NO_PROMPT_FILTER",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D05",
+      "requirement": "UNCONTROLLED uses frozen v1 full DDL without resolver/catalog on a verified disposable clone and dedicated SELECT-only baseline login.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "UNCONTROLLED",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D06",
+      "requirement": "References retain ScopeReviewStore owner pins, exact reviewed lineage and persona/mode/date-equivalent scope.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D07",
+      "requirement": "Canaries contain only distinctive forbidden cells with bound salary dates and no permitted-cell contamination.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D08",
+      "requirement": "Comparator checks typed scalars, multiset duplicates, exact column meaning and reviewed projection mappings.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D09",
+      "requirement": "Failures use actual FailureClass values and classifier precedence with genuine manual triage when needed.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-D10",
+      "requirement": "Six run counts reconcile with pending triage only a subset of failed scored cases, including partial and aborted runs.",
+      "environment_id": "DISPOSABLE_HARNESS",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_D",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-E01",
+      "requirement": "A real local browser observes all seven pages, disconnected default, opt-in gate, persona placement and simulation labels.",
+      "environment_id": "LOCAL_BROWSER",
+      "mode": "FULL",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_E",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-E02",
+      "requirement": "Actual Ask concurrency, navigation/back/refresh/cancel behavior and public error hygiene are independently observed.",
+      "environment_id": "LOCAL_BROWSER",
+      "mode": "FULL",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_E",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-F01",
+      "requirement": "Separate holdout governance confirms immutable split, prior exposures, boundary schedule and owner permit requirements without payload access in preparation.",
+      "environment_id": "SEALED_GOVERNANCE",
+      "mode": "NONE",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_F",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "HOLDOUT_GOVERNANCE_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    },
+    {
+      "criterion_id": "R09-F02",
+      "requirement": "Final independent signoff reviews mandatory live evidence and leaves production promotion to a separate explicit owner decision.",
+      "environment_id": "INDEPENDENT_REVIEW",
+      "mode": "ALL_MODES",
+      "git_commit": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "artifact_set_sha256": "43bd47267a4520720ed4a60ef3a3b543b87269c4ba9a71b30bb7a437652d7efe",
+      "procedure_reference": "R09_PHASE_F",
+      "status": "NOT_RUN",
+      "executed_at": null,
+      "observation_reference": null,
+      "evidence_sha256": null,
+      "reviewer_reference": null,
+      "authorization_reference": null,
+      "scope": "TUNING_ONLY",
+      "unresolved_prerequisites": [
+        "LIVE_ACCEPTANCE_NOT_EXECUTED",
+        "SEPARATE_OWNER_AUTHORIZATION_REQUIRED"
+      ],
+      "matrix_sha256": "2353d4bee6314a6ce3a026a83bfe4e96204dc2a423dbce380c65ebb9253d12b4"
+    }
+  ],
+  "production_promotion": "NOT_APPROVED"
+}
