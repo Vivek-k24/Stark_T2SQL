@@ -281,3 +281,267 @@ When prompted by the owner to implement Gate R08 on `codex/r08-remediation`, Cod
 <!-- STARK_HANDOFF_V1
 {"gate": "R08", "implementation_ready": true, "phase": "design", "status": "APPROVE", "subject_sha": "4364b38dac6dee5b81e946f216a8202cd3bef8c7", "tests": {"failed": 0, "passed": 7, "scope": "offline", "skipped": 0}}
 -->
+
+
+---
+
+## 9. Independent Implementation Verification
+
+**Date:** 2026-10-15  
+**Gate:** R08 — Resolve Overlapping PRs, UI Regressions and Limited Cleanup (ISS-12/17/21/22)  
+**Tracking Issue:** [GitHub Issue #10](https://github.com/Vivek-k24/Stark_T2SQL/issues/10)  
+**Implementation PR:** [Draft PR #23](https://github.com/Vivek-k24/Stark_T2SQL/pull/23)  
+**Shared Working Branch:** `codex/r08-remediation`  
+**Latest Codex Commit:** `1dc717dc4242ec834a245f25c38bb3b18ec1ace5`  
+**Implementation Commit:** `96351c7edcd98253df62685222cbdca1459ada6d`  
+**Approved Design Commit:** `2f229f8e5767108e25708c1d6ee727f2674d459e`  
+**Integration Baseline:** [`4364b38dac6dee5b81e946f216a8202cd3bef8c7`](https://github.com/Vivek-k24/Stark_T2SQL/commit/4364b38dac6dee5b81e946f216a8202cd3bef8c7)  
+**Reviewer:** Antigravity (Independent Architecture & Security Reviewer)  
+**Verdict:** **APPROVE** (Verified Implementation Ready for Owner Merge Review)  
+
+---
+
+### 9.1 Executive Summary & Verification Conclusion
+
+Antigravity has performed an independent implementation verification of Gate R08 on branch `codex/r08-remediation` ([Draft PR #23](https://github.com/Vivek-k24/Stark_T2SQL/pull/23)).
+
+Codex's implementation cleanly and faithfully executes the design decisions approved in `2f229f8e5767108e25708c1d6ee727f2674d459e`:
+1. **Inference Client Protocol Safety (ISS-12):** Normalizes modern (`stop_type`), legacy (`stopped_*`), and compact (`stop=True`) completion metadata. Eliminates all text-suffix semicolon guessing (`raw_output.rstrip().endswith(";")`). Enforces fail-closed validation on duplicate JSON keys (`_completion_object`), prompt context truncation, and conflicting/malformed stop flags. Immediately raises `GenerationTruncatedError` before extraction if the generation reached the token limit.
+2. **Watchdog & Concurrency Protections (ISS-12):** Restricts background watchdog thread to `current_socket.shutdown(socket.SHUT_RDWR)`, eliminating descriptor closure races with foreground `HTTPConnection.close()`. Introduces `_RequestSocket` to retain socket handles across `http.client` detachment. Guarantees release of `_single_flight` lock and proper socket cleanup across abnormal transport exits, timeouts, and cancellations.
+3. **Streamlit State Recovery & Layout (ISS-17 / ISS-21):** Implements atomic stale-busy recovery in `initialize_state()` via nonblocking `_UI_REQUEST_LOCK` acquisition, guaranteeing that an interrupted session state does not strand the UI while protecting actively running requests. Reserves `persona_slot = st.container()` in `render_shell()` before sidebar disclaimer notes. Adds a safe `"Refresh status"` button in `render_processing()` while preserving the disabled state of `"Ask"`. Strictly preserves all seven navigation items and offline health/demo capabilities (`render_health`, `render_demo`, `STARK_ENABLE_CONNECTED_UI`).
+4. **Policy-Derived Authorization Probes (ISS-22):** Refactors `benchmarks/authorization/spec.py` to derive probe expectations directly from canonical `authorization_specs()`. Correctly requires all column grants for `SELECT *`. All **273 probes** reproduce exact baseline equality in IDs, ordering, SQL, expected access, row scope, and observation flags (probe-ID SHA-256: `7b409d0df661c0b202f29c8faab97e9d56c20eac1dc2d29f673162b6e4c1730f`).
+5. **PR Conflict Resolution:** Preserves the integrity of cumulative integration PR #2 (`gemini/full-remediation-review`) and historical draft PR #1 (`assistant/sqlcoder-runtime-integration`), leaving both open and unmerged.
+
+---
+
+### 9.2 Inference Protocol Safety & Watchdog Concurrency Audit (ISS-12)
+
+#### Critical Independent Pipeline Trace: Compact Responses & `STOP_REASON_UNSPECIFIED`
+The design review posed a critical architectural inquiry: *Can a compact response labeled `STOP_REASON_UNSPECIFIED` propagate through extraction and execution as a successful answer without sufficient completion evidence?*
+
+Antigravity traced the execution flow across the entire pipeline:
+1. **Inference Client (`client.py`):**
+   - In compact mode (`stop: true`, no granular `stop_type` or `stopped_*` fields), `_completion_termination()` evaluates token budget.
+   - If `tokens >= max_tokens`: classified as `(True, False, "TOKEN_LIMIT", tokens)`. In `generate()` (lines 405–410), `if reached_limit:` immediately raises `GenerationTruncatedError("The model reached its generation token limit without a verified semicolon stop.")`. The candidate is rejected before returning to the caller.
+   - If `tokens < max_tokens`: classified as `(False, False, "STOP_REASON_UNSPECIFIED", tokens)`. Native `stop: true` proves that `llama.cpp` completed generation on a terminal condition (either an EOS token or the configured `stop: [";"]`).
+2. **SQL Extractor (`extract.py`):**
+   - `extract_sql(generated)` receives `GenerationResult(token_limit_reached=False, stopped_semicolon=False, finish_reason="STOP_REASON_UNSPECIFIED")`.
+   - `extract_sql` applies the deterministic FR-4.7 extraction rule: strip whitespace, cut at earliest semicolon or triple-backtick, strip again, and append `;`.
+   - If output is empty after stripping/cutting, it raises `SQLExtractionError` (`FC-EXTRACT`).
+3. **SQL Validator (`validator.py`):**
+   - The extracted SQL candidate is submitted to `ReviewedSQLValidator.review()`.
+   - The validator parses the candidate into a SQLGlot AST, walking all nodes. If the model generated an incomplete or truncated query (e.g. `SELECT employee_id FROM`), parsing fails with a syntax error (`FC-SYNTAX`) or unsupported AST shape (`BLOCKED_VALIDATOR`).
+   - The validator strictly checks table entitlements, CTE shadowing, and function policies under the requesting persona.
+4. **PostgreSQL Executor (`executor.py`):**
+   - If the candidate passes AST validation, it is routed to PostgreSQL under the unprivileged persona login role with `FORCE ROW LEVEL SECURITY`.
+   - Any reference to unauthorized columns fails at the engine level with SQLSTATE `42501` (`BLOCKED_DB`).
+5. **Evaluation Oracle & Comparator (`comparator.py`):**
+   - In evaluation mode, query results are scored against the persona reference oracle.
+6. **Conclusion:**
+   `STOP_REASON_UNSPECIFIED` cannot create an unsafe success. It never bypasses AST shape validation, table entitlements, or PostgreSQL RLS. It accurately denotes natural engine termination below the token cap without falsely claiming verified semicolon stop evidence.
+
+#### Additional Protocol & Concurrency Verifications:
+- **No Guessed Semicolon:** The fallback `raw_output.rstrip().endswith(";")` on the integration branch has been completely excised.
+- **Duplicate JSON Key Rejection:** `json.loads(response_text, object_pairs_hook=_completion_object)` rejects responses containing duplicate keys with `ModelGenerationError`.
+- **Prompt Truncation:** Responses with `truncated: true` raise `ModelGenerationError`.
+- **Watchdog Socket Safety:** `_RequestSocket` synchronizes socket capture prior to `getresponse()`. The watchdog invokes `shutdown(socket.SHUT_RDWR)` only and never mutates `connection.sock` or calls `close()`.
+- **Single-Flight Lock:** Verified nonblocking lock acquisition (`self._single_flight.acquire(blocking=False)`) at request entry and guaranteed release in outer `finally`.
+- **Timeout & Cancellation Attribution:** Cancellation via `cancel_event` raises `ModelGenerationError` (preserving `raw_output` and attributing to cancellation), whereas wall-clock expiration attributes to `GenerationTimeoutError` (`FC-TIMEOUT-GEN`).
+- **Native Capture Status:** Confirmed that no raw native `llama.cpp` response file exists on disk. All test assertions are synthetic protocol contracts.
+
+---
+
+### 9.3 Streamlit UI Request & Navigation Audit (ISS-17 / ISS-21)
+
+1. **Atomic Stale Busy Recovery:**
+   In `src/stark_t2sql/ui/ui_state.py`, `initialize_state()` acquires `_UI_REQUEST_LOCK` with `blocking=False` before clearing `BUSY_KEY`. If another thread holds the lock, the busy state is preserved. This eliminates check-then-clear race conditions while recovering abandoned flags after browser reruns or exceptions.
+2. **Guaranteed Lock Release:**
+   In `request_guard()`, nested `try...finally` blocks guarantee that `_UI_REQUEST_LOCK.release()` is executed even if mutating `state[BUSY_KEY]` raises an exception or triggers a Streamlit `BaseException` rerun.
+3. **Duplicate Ask Prevention:**
+   When "Ask" is clicked, `render_playground()` acquires `request_guard` and immediately overwrites `button_slot` with `st.button("Ask", disabled=True, key="stark_processing_ask")` before invoking the backend.
+4. **Sidebar Persona Selector Placement:**
+   `render_shell()` reserves `persona_slot = st.container()` before the footer captions, returning `(navigation, persona_slot)`. `render_persona_selector()` renders into `persona_slot`, anchoring the dropdown neatly above the static disclaimer notes.
+5. **Status Refresh Action:**
+   `render_processing()` renders `st.button("Refresh status", key="stark_refresh_busy_status")` while `"Ask"` remains disabled, providing a safe, user-triggered script rerun to clear completed requests.
+6. **Preservation of 7-Page Navigation & Offline Capabilities:**
+   `NAVIGATION` retains all 7 pages in exact order:
+   `("Health & Status", "Architecture", "Progress", "Offline demo", "Playground", "Semantic Catalog", "Access Policy")`.
+   `render_health()`, `render_demo()`, and `STARK_ENABLE_CONNECTED_UI` safety gates remain fully functional.
+7. **Secret Hygiene:**
+   Only `SafeResponse` is retained in session state. Exceptions are caught and mapped to fixed sanitized error messages; no SQL queries, stack traces, or credentials reach the UI.
+8. **Real Browser Smoke Status:**
+   **BROWSER_SMOKE_NOT_VERIFIED**. In accordance with policy, unapproved host desktop browser launches and daemon listener processes were not executed. Framework-level Streamlit AppTest execution across all 7 views and busy-recovery scenarios passed with 100% success.
+
+---
+
+### 9.4 Benchmark Authorization Probe Alignment Audit (ISS-22)
+
+1. **Derivation from Canonical Specifications:**
+   `build_probes()` in `benchmarks/authorization/spec.py` derives expectations from `authorization_specs(matrix, snapshot.columns_by_table)`.
+2. **All-Column Star Requirement:**
+   For star probes (`authorization.<role>.<table fire>.star`), `build_probes()` computes `all(spec.expected_select for spec in column_specs)`. If even one column lacks SELECT privilege, the star probe expected access is `False`.
+3. **Independent Reproducibility of 273 Probes:**
+   Antigravity independently executed probe generation against `policy/access_matrix.yaml` and `fixture_manifest.json`:
+   - Exact count: **273 probes**.
+   - Probe-ID SHA-256 (newline-separated UTF-8): `7b409d0df661c0b202f29c8faab97e9d56c20eac1dc2d29f673162b6e4c1730f`.
+   - IDs, ordering, SQL templates, row scopes, expected access, and `observes_rows=False` match baseline contracts identically.
+4. **Boundary:** These probes represent static policy expectations, not live PostgreSQL grant validations.
+
+---
+
+### 9.5 PR Conflict Resolution & Repository State Audit
+
+All 8 files from historical draft PR #1 (`assistant/sqlcoder-runtime-integration`) were verified:
+
+| File | Disposition | Verification Findings |
+| :--- | :---: | :--- |
+| `src/stark_t2sql/inference/client.py` | **ADAPTED** | Structured `_completion_termination`, watchdog shutdown, single-flight guard, timeout configuration, and duplicate key rejection incorporated. Positive timeout validation retained. |
+| `app.py` | **ADAPTED** | Persona slot parameter wired; `render_health()`, `render_demo()`, and `STARK_ENABLE_CONNECTED_UI` strictly preserved. |
+| `src/stark_t2sql/ui/ui_state.py` | **ADAPTED** | Atomic stale-busy recovery and nested try/finally guard release implemented. |
+| `src/stark_t2sql/ui/views.py` | **ADAPTED** | Pre-footer persona slot and refresh button added; 7-item navigation tuple and local labeling preserved. |
+| `benchmarks/authorization/spec.py` | **ADAPTED** | Matrix-driven probe generator derived from `authorization_specs()`; star probe all-column check enforced. |
+| `tests/test_inference_protocol.py` | **ADAPTED** | Adopted comprehensive offline protocol tests with explicit synthetic labeling. |
+| `tests/test_ui_rerun_contracts.py` | **ADAPTED** | Adapted navigation assertion to `"Health & Status"` default; AppTest tests pass. |
+| `tests/test_authorization_probe_alignment.py` | **ADOPTED** | Adopted all policy alignment and stability test cases; pass 100%. |
+
+- **PR #1 Status:** Retained as OPEN/DRAFT (`cacffee29234cbbce6b471539e712999a3b435e1`). Not merged, not closed.
+- **PR #2 Status:** Retained as OPEN/DRAFT (`4364b38dac6dee5b81e946f216a8202cd3bef8c7`). Not merged, not rebased.
+- **PR #23 Scope:** Exactly 10 files (8 implementation/test files, `Codex_R08_Work_Log.md`, and `Antigravity_R08_Review.md`). Zero unapproved files modified.
+
+---
+
+### 9.6 Independent Test Execution Results
+
+All tests were executed using `H:\STARK_T2SQL_R02_ENV\Scripts\python.exe` (Python 3.12.10, pytest 8.3.5) with `$env:PYTHONPATH='src;.'` and `$env:STARK_TEST_ENABLE_DB_INTEGRATION='0'`.
+
+#### 1. Prescribed Four Focused R08 Suites
+```powershell
+pytest tests/test_inference_protocol.py tests/test_ui_rerun_contracts.py tests/test_authorization_probe_alignment.py tests/test_trace_ui_contracts.py -q -ra
+```
+- **Result:** **132 passed** in 4.99s (0 failed, 0 skipped).
+
+#### 2. Expanded Affected Suites
+```powershell
+pytest tests/test_inference_protocol.py tests/test_ui_rerun_contracts.py tests/test_authorization_probe_alignment.py tests/test_trace_ui_contracts.py tests/test_inference_contracts.py tests/test_interim_ui.py tests/test_policy_contracts.py -q -ra
+```
+- **Result:** **211 passed** in 4.86s (0 failed, 0 skipped).
+
+#### 3. Full Repository Offline Regression Suite
+```powershell
+pytest -q -ra
+```
+- **Result:** **1,574 passed, 58 skipped** in 45.16s (0 failed).
+- **Delta:** +125 passed tests over the R07 baseline (1,449 -> 1,574).
+- **Skips Breakdown (58 total):**
+  - 32 excluded parser-representation cases.
+  - 16 wall-clock review inputs (`STARK_TEST_WALLCLOCK_REVIEW_PATH`).
+  - 6 opt-in live PostgreSQL integration cases.
+  - 1 adversarial scope review input (`STARK_TEST_ADVERSARIAL_SCOPE_PATH`).
+  - 1 reference review input (`STARK_TEST_REFERENCE_REVIEW_PATH`).
+  - 1 live runner database case.
+  - 1 live seed PostgreSQL reset case.
+
+---
+
+### 9.7 Acceptance Criteria Verification Matrix (R08-T01 through R08-T17)
+
+| Criterion ID | Description | Verification Target | Status |
+| :--- | :--- | :--- | :---: |
+| **R08-T01** | Modern `llama.cpp` Completion Formats | `tests/test_inference_protocol.py::test_native_completion_metadata_formats` | **PASSED** |
+| **R08-T02** | Legacy `llama.cpp` Completion Formats | `tests/test_inference_protocol.py::test_native_completion_metadata_formats` | **PASSED** |
+| **R08-T03** | Compact Completion Formatting | `tests/test_inference_protocol.py::test_native_completion_metadata_formats` | **PASSED** |
+| **R08-T04** | No False Success at Token Cap | `tests/test_inference_protocol.py::test_native_completion_metadata_formats` | **PASSED** |
+| **R08-T05** | Prompt Truncation Detection | `tests/test_inference_protocol.py::test_missing_conflicting_or_unsafe_terminal_metadata_fails_closed` | **PASSED** |
+| **R08-T06** | Malformed / Conflicting Stop Data | `tests/test_inference_protocol.py::test_missing_conflicting_or_unsafe_terminal_metadata_fails_closed` | **PASSED** |
+| **R08-T07** | Watchdog Socket Thread Safety | `tests/test_inference_protocol.py::test_watchdog_shutdown_does_not_close_shared_http_connection` | **PASSED** |
+| **R08-T08** | Single-Flight Concurrency Guard | `tests/test_inference_protocol.py::test_concurrent_generation_rejected_without_duplicate_request` | **PASSED** |
+| **R08-T09** | Orphan Busy Flag Recovery | `tests/test_ui_rerun_contracts.py::test_orphaned_session_busy_flag_recovers_when_no_ui_request_is_active` | **PASSED** |
+| **R08-T10** | Active Concurrency Lock Protection | `tests/test_ui_rerun_contracts.py::test_busy_state_is_not_cleared_while_another_request_owns_ui_lock` | **PASSED** |
+| **R08-T11** | Exception Unwind & Guard Release | `tests/test_ui_rerun_contracts.py::test_base_exception_rerun_releases_guard_and_allows_next_request` | **PASSED** |
+| **R08-T12** | Pre-Footer Persona Slot Layout | `tests/test_ui_rerun_contracts.py::test_selector_is_visually_anchored_above_sidebar_footer` | **PASSED** |
+| **R08-T13** | Refresh Button in Busy State | `tests/test_ui_rerun_contracts.py::test_processing_view_offers_refresh_without_enabling_another_ask` | **PASSED** |
+| **R08-T14** | Policy-Derived Column Probes | `tests/test_authorization_probe_alignment.py::test_every_column_probe_matches_authoritative_policy_spec` | **PASSED** |
+| **R08-T15** | Star Probe Requires All Columns | `tests/test_authorization_probe_alignment.py::test_star_probe_is_based_on_all_columns_not_table_level_acl` | **PASSED** |
+| **R08-T16** | Probe Order & ID Stability | `tests/test_authorization_probe_alignment.py::test_probe_ids_and_original_order_remain_stable` | **PASSED** |
+| **R08-T17** | UI Navigation & Demo Preservation | `tests/test_interim_ui.py::test_real_streamlit_public_views_without_connected_startup` | **PASSED** |
+
+---
+
+### 9.8 Frozen-File & Security Integrity Audit
+
+SHA-256 digests of all 5 frozen baseline assets were verified with zero drift:
+
+| File | Baseline Manifest Digest | Independently Measured Digest | Status |
+| :--- | :--- | :--- | :---: |
+| `schema.sql` | `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` | `f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3` | **MATCH** |
+| `seed_data.py` | `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` | `ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf` | **MATCH** |
+| `fixture_manifest.json` | `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` | `fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e` | **MATCH** |
+| `fixture_pg_dump.sql` | `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` | `859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4` | **MATCH** |
+| `src/inference/prompt_template.txt` | `67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6` | `67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6` | **MATCH** |
+
+Pre-existing uncommitted modifications in `Antigravity_Design_Review.md` were preserved in the working directory.
+
+---
+
+### 9.9 Architecture & Progress Display Updates
+
+1. **R07 Baseline Verification:** Confirmed merge of Gate R07 PR #22 into `gemini/full-remediation-review` at commit `4364b38dac6dee5b81e946f216a8202cd3bef8c7` on `2026-10-15T23:15:17Z` by `Vivek-k24`.
+2. **`ops/progress.json` Updates:**
+   - `github_base_sha`: updated to `4364b38dac6dee5b81e946f216a8202cd3bef8c7`.
+   - Gate R03: corrected `issue_state` to `closed`.
+   - Gate R07: updated `state` to `MERGED`, `merge_sha` to `4364b38dac6dee5b81e946f216a8202cd3bef8c7`, `issue_state` to `closed`.
+   - Gate R08 milestone appended:
+     - `state`: `"VERIFIED — AWAITING MERGE"`
+     - `pr`: 23
+     - `issue`: 10
+     - `merge_sha`: `"not merged"`
+     - `tests`: `{"failed": 0, "passed": 1574, "scope": "offline", "skipped": 58}`
+     - `evidence_url`: `"https://github.com/Vivek-k24/Stark_T2SQL/blob/1dc717dc4242ec834a245f25c38bb3b18ec1ace5/Codex_R08_Work_Log.md"`
+     - `evidence_sha256`: `"e734b648b30cb42616d20c353680c56c320d7e8e11bab367ee2bd3d384158127"`
+3. **HTML Progress Block Regeneration:**
+   Executed `python -m ops.progress` and normalized line endings to retain LF. Verified that only the progress region between `<!-- STARK_PROGRESS_BEGIN -->` and `<!-- STARK_PROGRESS_END -->` changed in `STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`. Executed `pytest tests/test_interim_ui.py` (5 passed).
+
+---
+
+### 9.10 Mandatory Local Browser HTML Synchronization
+
+1. **Pre-Copy Audit & Backup:**
+   - Canonical repo HTML: `H:\STARK T2SQL\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`
+   - Legacy browser copy: `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`
+   - Prior to synchronization, both files possessed SHA-256 `21f76c67be8a1fab2a485b48cbc4553e1f8c2a623cd6a440ac48bdc2a7c38ab4`.
+   - Created external backup of legacy browser HTML at:
+     `C:\Users\User\.gemini\antigravity\brain\168e5d71-9b0a-4dec-8221-3b995bd2a5c2\backup_20261015_R08_STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`
+2. **Copy & On-Disk Hash Verification:**
+   - Synchronized reviewed canonical HTML to legacy copy.
+   - Final on-disk SHA-256 verification:
+     - `H:\STARK T2SQL\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`: `9751b216b6f76f33b2cae95c76c087c2e98820488cde576ca6a74d16f65999e6` (`LOCAL_UI_UPDATED`)
+     - `H:\STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html.html`: `9751b216b6f76f33b2cae95c76c087c2e98820488cde576ca6a74d16f65999e6` (`LOCAL_UI_UPDATED`)
+   - Both files are confirmed SHA-256 identical (`Match: True`).
+
+---
+
+### 9.11 Outstanding Prerequisites for Gate R09
+
+1. **Live Inference and PostgreSQL Infrastructure:**
+   Full end-to-end integration with live PostgreSQL 16 (including live TCP connections, role credentials, and live RLS evaluation) and live `llama-server` (GGUF model execution) remains deferred to Gate R09.
+2. **Native Capture Asset:**
+   A raw native capture response from an authentic running Windows CPU `llama-server` should be recorded and archived as a frozen fixture during live environment validation.
+3. **Interactive Browser Smoke:**
+   Live interactive browser testing in a real desktop browser will occur during final gate acceptance.
+
+---
+
+### 9.12 Final Protocol Stopping Rule
+
+In strict compliance with `AGENTS.md` Rule 3:
+- Antigravity appends this independent verification report, updates `ops/progress.json` and canonical HTML, and pushes to `origin/codex/r08-remediation`.
+- Draft PR #23 remains open awaiting owner review.
+- PR #1 and PR #2 remain untouched.
+- `main` is untouched.
+- Gate R09 is not initiated.
+- No automatic dispatcher or background sync is started.
+- Antigravity **STOPS** and awaits the owner's explicit merge decision.
+
+<!-- STARK_HANDOFF_V1
+{"gate": "R08", "implementation_ready": true, "phase": "verification", "status": "VERIFIED_APPROVE", "subject_sha": "1dc717dc4242ec834a245f25c38bb3b18ec1ace5", "tests": {"failed": 0, "passed": 1574, "scope": "offline", "skipped": 58}}
+-->
