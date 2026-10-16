@@ -38,7 +38,23 @@ class SubmittedAnswer:
 
 
 def initialize_state(state: MutableMapping[str, object]) -> None:
-    state.setdefault(BUSY_KEY, False)
+    """Recover an abandoned busy flag only when no UI request owns the lock.
+
+    Streamlit session state can outlive an interrupted script run. A stale True
+    value must not strand every subsequent rerun behind st.stop(). The global
+    nonblocking request lock remains the real concurrency guard; never clear a
+    busy flag while any request still holds it.
+    """
+    if state.get(BUSY_KEY) is True:
+        # Acquire rather than check-then-clear: another rerun must not acquire
+        # request ownership between the stale check and the state update.
+        if _UI_REQUEST_LOCK.acquire(blocking=False):
+            try:
+                state[BUSY_KEY] = False
+            finally:
+                _UI_REQUEST_LOCK.release()
+    else:
+        state.setdefault(BUSY_KEY, False)
 
 
 def session_is_busy(state: MutableMapping[str, object]) -> bool:
@@ -61,12 +77,14 @@ def request_guard(state: MutableMapping[str, object]) -> Iterator[bool]:
     if session_is_busy(state) or not _UI_REQUEST_LOCK.acquire(blocking=False):
         yield False
         return
-    state[BUSY_KEY] = True
     try:
+        state[BUSY_KEY] = True
         yield True
     finally:
-        state[BUSY_KEY] = False
-        _UI_REQUEST_LOCK.release()
+        try:
+            state[BUSY_KEY] = False
+        finally:
+            _UI_REQUEST_LOCK.release()
 
 
 def retain_answer(
