@@ -1,7 +1,7 @@
 {
   "base": "gemini/full-remediation-review",
   "frd": "1.8",
-  "github_base_sha": "4364b38dac6dee5b81e946f216a8202cd3bef8c7",
+  "github_base_sha": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
   "interim": {
     "gate": "INT-01",
     "issue": 15,
@@ -177,20 +177,43 @@
       "evidence_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/1dc717dc4242ec834a245f25c38bb3b18ec1ace5/Codex_R08_Work_Log.md",
       "gate": "R08",
       "issue": 10,
-      "issue_state": "open",
+      "issue_state": "closed",
       "issue_title": "R08 | Resolve overlapping PRs, UI regressions and limited cleanup (ISS-12/17/21/22)",
       "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/10",
       "live_postgresql": "UNVERIFIED",
-      "merge_sha": "not merged",
+      "merge_sha": "b926a9c17a83f73800db4a3b8aa0ee03d444743c",
+      "merged_at": "2026-10-16T00:43:38Z",
+      "merged_by": "Vivek-k24",
       "pr": 23,
       "review_url": "https://github.com/Vivek-k24/Stark_T2SQL/pull/23",
       "review_verdict": "APPROVE",
-      "state": "VERIFIED — AWAITING MERGE",
+      "state": "MERGED",
       "tests": {
         "failed": 0,
         "passed": 1574,
         "scope": "offline",
         "skipped": 58
+      }
+    },
+    {
+      "evidence_sha256": "533a1e9c50d63491950fa951f07e63e23942af192a56ab1599338427cb0a113c",
+      "evidence_url": "https://github.com/Vivek-k24/Stark_T2SQL/blob/0695002c9c2f48156e88362197a901871179ec84/Codex_R09_Work_Log.md",
+      "gate": "R09",
+      "issue": 11,
+      "issue_state": "open",
+      "issue_title": "R09 | Acceptance runbook, evidence contracts and offline preparation",
+      "issue_url": "https://github.com/Vivek-k24/Stark_T2SQL/issues/11",
+      "live_postgresql": "UNVERIFIED",
+      "merge_sha": "not merged",
+      "pr": 24,
+      "review_url": "https://github.com/Vivek-k24/Stark_T2SQL/pull/24",
+      "review_verdict": "APPROVE — PREPARATION ONLY",
+      "state": "VERIFIED — AWAITING MERGE",
+      "tests": {
+        "failed": 0,
+        "passed": 1649,
+        "scope": "offline",
+        "skipped": 64
       }
     }
   ],
