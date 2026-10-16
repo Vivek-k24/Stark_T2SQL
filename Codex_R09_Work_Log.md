@@ -166,4 +166,8 @@ Neither repository E0 HTML nor either owner's primary/legacy UI copy was changed
 
 Preparation is complete for independent review with the live evidence and provider limitations above. The next step is an owner-directed Antigravity verification; this implementation does not start it. Final live execution, any reset/setup, sealed exposure, production remediation, PR #1 closure, R09 merge and PR #2 promotion to `main` each remain outside this authorization.
 
-Publication commit and draft PR verification are recorded below after the actual push. No merge or promotion is performed.
+Implementation commit: [`a5eb39d005a32b559b1371e8e7978ada15c8c548`](https://github.com/Vivek-k24/Stark_T2SQL/commit/a5eb39d005a32b559b1371e8e7978ada15c8c548), `test(r09): prepare gated acceptance runbook and evidence contracts`. It contains the nine allowed additions listed above. The actual pushed branch SHA was verified with `git ls-remote`; the working clone was clean after that push.
+
+Opened exactly one [draft PR #24](https://github.com/Vivek-k24/Stark_T2SQL/pull/24), targeting `gemini/full-remediation-review` from `codex/r09-remediation`. GitHub confirmed OPEN, `isDraft=true`, the exact implementation head SHA above and ten total files: the nine Codex additions plus the unchanged pre-existing Antigravity design. PR #1 and PR #2 remained OPEN drafts on their existing heads; neither was merged or closed.
+
+This publication-record follow-up changes only `Codex_R09_Work_Log.md`. Test source, evidence contracts, matrix, template and runbook remain exactly as tested; pytest is not repeated for this log-only addition. The final branch SHA is reported to the owner after verifying the follow-up push. No merge, promotion, live operation, progress update or next-agent activation is performed.
