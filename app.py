@@ -45,7 +45,7 @@ def main() -> None:
         render_processing()
         st.stop()
 
-    navigation = render_shell()
+    navigation, persona_slot = render_shell()
     from stark_t2sql.ui.project_status import render_health, render_demo
     if navigation == "Health & Status":
         render_health()
@@ -92,7 +92,7 @@ def main() -> None:
         from stark_t2sql.pipeline.orchestrator import load_persona_runtime
 
         application = load_persona_runtime()
-        persona = render_persona_selector(application)
+        persona = render_persona_selector(application, persona_slot=persona_slot)
     except Exception:
         st.title(navigation)
         st.warning(SERVICE_UNAVAILABLE)
