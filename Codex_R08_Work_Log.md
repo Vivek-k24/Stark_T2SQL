@@ -172,4 +172,14 @@ Implementation and offline regression verification are complete, ready for publi
 
 No progress JSON, repository HTML or local browser copy was updated. During the later owner-authorized Antigravity verification, that reviewer must independently verify R07's merge, update the manual Architecture/Progress evidence and safely synchronize the primary and legacy HTML copies with backups/hash checks as requested. This implementation phase does not perform those deferred actions.
 
-No PR merge/closure, `main` push, automatic Antigravity start, R09 work or orchestration activation was performed. Publication commit and draft PR details are appended after their actual creation and verification.
+No PR merge/closure, `main` push, automatic Antigravity start, R09 work or orchestration activation was performed.
+
+### Verified publication
+
+- Implementation commit: [`96351c7edcd98253df62685222cbdca1459ada6d`](https://github.com/Vivek-k24/Stark_T2SQL/commit/96351c7edcd98253df62685222cbdca1459ada6d), `fix(r08): harden inference protocol and recover Streamlit requests`. Contains the nine implementation/test/log files listed above. Pushed on the existing shared branch; `git ls-remote` confirmed the matching remote SHA.
+- Draft PR: [#23 - R08: harden inference protocol and Streamlit request recovery](https://github.com/Vivek-k24/Stark_T2SQL/pull/23). GitHub reported OPEN, `isDraft=true`, head `codex/r08-remediation`, base `gemini/full-remediation-review` and the matching implementation SHA. Listing all PRs for this head returned exactly one PR.
+- Verified PR scope: the nine Codex paths plus the previously approved `Antigravity_R08_Review.md` from `2f229f8e5767108e25708c1d6ee727f2674d459e`. No additional path appears in the PR.
+- Rechecked PR #1 and PR #2 after opening PR #23: both remain OPEN/DRAFT with the same heads and `updatedAt` values observed before publication. No action was taken on either. The original checkout still has only its two pre-existing review modifications.
+- A documentation-only follow-up records these actual publication details. Tested source and tests remain identical to the implementation commit. Its final pushed head is reported in the owner handoff and is available in this log's Git history.
+
+Final status: **R08 implementation complete; offline regressions pass; draft PR awaiting separately owner-requested Antigravity verification.** Browser smoke remains blocked, native/live backend acceptance remains unverified, and no next phase was initiated.
