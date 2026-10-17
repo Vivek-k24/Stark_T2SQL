@@ -12,6 +12,35 @@ The current Streamlit app is still largely the mid-project static/simulated demo
 
 Do not interpret this as authorization for a generic text-to-SQL engine, arbitrary schemas, multi-tenancy, or alternative LLM APIs. Those proposals were **explicitly rejected**. Preserve the *single fixed* `stark_test` public schema, four simulated personas, STARK semantic definitions, PostgreSQL RLS/column grants, SQLCoder-7B-2, local loopback, and FRD 1.8's trust boundaries.
 
+## Additional frontend product requirements (owner clarification, 2026-10-17)
+
+The owner has additionally requested **Admin Panel, Permission Management, UI Settings, Faker-backed synthetic data generation/diversification, and real Login/Signup**. These do **not** exist as completed features in the current repository; do not present existing static or mocked UI as implementation. This expands the original FRD MVP, which deliberately excluded real authentication. Treat this as an explicit design/implementation request on this feature branch, document the change against FRD scope with a security impact assessment, and surface any approval gates before activation. **Do not silently weaken or replace the fixed STARK database/RLS policy.**
+
+### Required frontend navigation and features
+
+- **Dashboard / Health**: real model status (offline when stopped), PostgreSQL listener versus authenticated connectivity, policy-state verification, readiness and concise explanations. Do not confuse TCP-up with DB authorization.
+- **Playground**: all four governed personas, an input box, truthful no-answer when SQLCoder is offline; never send SQL, return fabricated rows, or use privileged DB login for candidate execution.
+- **Semantic Catalog / Access Policy**: live authenticated, read-only, persona-filtered representations from the authoritative fixed fixture and the reviewed matrix.
+- **Admin Panel** (authorized admin only): real, separate security boundary from simulated personas; user/account approval status, operational health, auditable settings and explicit safe setup actions. Never make a sidebar switch or Streamlit session-state flag alone confer administrator authority.
+- **Permissions** (authorized admin only): inspect effective PostgreSQL grants/RLS and manage which *authenticated app users* may select each of the existing **four** simulated personas. Account-to-persona grants require explicit administrator approval, server-side authorization on **every** request, and audit logging. The existing PostgreSQL role matrix is initially immutable. An operator request to change actual database GRANT/RLS must use a separate backup + review + exact-plan approval workflow and must **not** silently run from a form submission.
+- **Settings**: configure fixed loopback PostgreSQL host/port/db, existing-role credentials, local model paths/health, model memory and request timeouts from a privileged, masked frontend; validate values before activation; persist secrets outside Git only if secure OS-backed storage and threat review are implemented. Never display secret plaintext, leak it in logs, traces, state, or URL, or enable non-loopback destinations.
+- **Data Lab / Synthetic Data**: offer **Faker**-based diversity options (seed, distributions, identities/names, dates, departments, mix, preview/validation); preserve the fixed 12-table schema and mandatory security/persona fixtures. Prefer deterministic preview/export and separately named disposable clones. **Never rewrite, reseed, reset, or vary the authoritative `stark_test` fixture without a separately approved restore/backup migration.** Larger employee counts or altered planted facts that violate fixture validation require a documented contract change—not a hidden seed reset.
+- **Login / Signup**: real local app-user accounts, separate from the three PostgreSQL service logins and four simulated persona identities. Use a reviewed authentication/session library with secure password hashing, server-side session enforcement, CSRF/rate-limit protections, account lockout/expiry, password resets, audit logging, and first-admin bootstrap requiring explicit local operator action. Signup must grant **zero admin/database/persona permissions by default** and require administrator approval. No public internet exposure or undocumented remote authentication. Do not claim real auth exists until demonstrated with independent denial tests.
+
+### Phasing and reviews
+
+1. **First deliverable:** replace simulated main UI with independently live DB/metadata/service screens and honest SQLCoder-offline Playground (the original 10-point contract below). This alone can be reviewed while model is off.
+2. **Second deliverable:** admin navigation, safe operator settings, account/auth threat-model proposal and concrete secure-secret design; develop only the non-destructive pieces until review gates are satisfied.
+3. **Third deliverable:** actual user authentication/signup, per-user authorization enforcement and admin-driven persona entitlements with adversarial security regression tests. This changes FRD scope and needs explicit review before enabling.
+4. **Fourth deliverable:** Faker preview/export for a disposable dataset; activation against any PostgreSQL database requires separate authorization and clone safety checks.
+5. **Final deliverable:** real live browser acceptance on owner's machine, four personas, DB accessible with model off, no false claims, documented PR evidence and exact one-command app launch.
+
+These requirements must be covered by a visible implementation tracker in the draft PR; **do not mark an unimplemented feature completed because a design document exists**. If actual secure auth or schema fixture constraints block a feature, report the blocker and approval decision instead of bypassing safety controls.
+
+### Python entrypoint (no rename)
+
+The existing Streamlit application entrypoint is `app.py`. `ops/serve.py` is a Python convenience wrapper that launches `streamlit run app.py`. **Do not rename or create `run.py` because the owner mentioned filenames as examples.** The one-command launcher should run the real application, with functionality gated at individual capability level instead of substituting a static demo.
+
 ## Known completed backend evidence (do not redo destructive setup)
 
 - PostgreSQL security policy installed using reviewed 97-statement SHA `8dca38bfecc8e4ccc0948adb3749cf8e2bf45dee24912b36a83884c1139da3c5`.
@@ -55,6 +84,6 @@ Preserve backward compatibility for offline tests where reasonable; explicitly u
 
 ## Strict exclusions
 
-No generic database/schema selector, new user auth system, cloud deployment, Kubernetes, Docker, external LLM provider, GitHub Actions workflow, automatic PostgreSQL policy re-apply, password rotation, backup overwrite, irreversible DB changes, promotion to production, or unsupervised merge.
+No generic database/schema selector, cloud deployment, Kubernetes, Docker, external LLM provider, GitHub Actions workflow, automatic PostgreSQL policy re-apply, unreviewed database permission changes, password rotation, backup overwrite, irreversible DB changes, promotion to production, or unsupervised merge. App-user Login/Signup and Admin features are now **requested scope** but require the explicit threat-model, security and enablement review gates above.
 
 **Definition of done:** Owner can start STARK in one PowerShell command, see an actual frontend with real DB and policy/semantic data for the original personas while SQLCoder is down, see only the model marked offline, and get a transparent immediate nonanswer when submitting a question; with SQLCoder online and genuine bindings, existing governed FULL path becomes available.
