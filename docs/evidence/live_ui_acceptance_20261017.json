@@ -1,0 +1,237 @@
+{
+  "kind": "LIVE_UI_MODEL_OFF_DELIVERY_EVIDENCE_INDEX_V1",
+  "recorded_at": "2026-10-17T19:42:57.198592+00:00",
+  "branch": "feat/live-ui-offline-model",
+  "starting_commit": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+  "draft_pr": "https://github.com/Vivek-k24/Stark_T2SQL/pull/28",
+  "pr_base": "main",
+  "offline_tests": {
+    "initial_baseline": {
+      "passed": 1824,
+      "skipped": 64,
+      "failed": 1,
+      "seconds": 53.73
+    },
+    "focused": {
+      "passed": 124,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 16.63,
+      "files": [
+        "tests/test_live_service_status.py",
+        "tests/test_live_metadata_workspace.py",
+        "tests/test_foreground_shutdown.py",
+        "tests/test_serve_connected.py",
+        "tests/test_ui_rerun_contracts.py",
+        "tests/test_ui_components.py",
+        "tests/test_ui_mock_persona_alignment.py",
+        "tests/test_permission_proposals.py",
+        "tests/test_interim_ui.py"
+      ]
+    },
+    "final_full": {
+      "passed": 1861,
+      "skipped": 66,
+      "failed": 0,
+      "seconds": 117.58,
+      "powershell_commands": [
+        "$env:PYTHONPATH='src;.'",
+        "$env:STARK_TEST_ENABLE_DB_INTEGRATION='0'",
+        "$env:STARK_R09_OFFLINE_ONLY='1'",
+        "& 'H:\\STARK_T2SQL_R02_ENV\\Scripts\\python.exe' -m pytest -q -ra"
+      ]
+    },
+    "skips": "Original 64 retained; two new live-UI opt-ins skipped by default. No skip is acceptance evidence.",
+    "earlier_full": {
+      "passed": 1851,
+      "skipped": 66,
+      "failed": 0,
+      "seconds": 111.95
+    },
+    "earlier_focused": {
+      "passed": 106,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 19.17,
+      "note": "Two later regression additions are covered by final full run."
+    },
+    "skip_counts": {
+      "parser_representations": 32,
+      "wallclock_review_input": 16,
+      "r09_live_scaffolds": 6,
+      "database_optins": 6,
+      "runner_database_optin": 1,
+      "r02_destructive_reset": 1,
+      "missing_reference_and_adversarial_scope": 2,
+      "new_live_ui_readonly_optins": 2
+    }
+  },
+  "separate_live_tests": {
+    "file": "tests/test_live_ui_readonly_acceptance.py",
+    "passed": 2,
+    "failed": 0,
+    "seconds": 16.69,
+    "method": "ACTUAL_POSTGRESQL_AND_STREAMLIT_APPTEST",
+    "not_native_browser": true
+  },
+  "readonly_runner": {
+    "evidence": "live_ui_metadata_20261017.json",
+    "sha256": "8e36889155d3bf8151b80a2da24397bdfdd4f15719dbfebc61deb32a4013cf1c",
+    "executed_at": "2026-10-17T19:17:07.700964+00:00",
+    "passed": 14,
+    "failed": 0,
+    "scope_counts": [
+      500,
+      102,
+      102,
+      10
+    ],
+    "negative_projection_denials": 7,
+    "sqlstate": "42501",
+    "all_twelve_table_rows_unchanged": true,
+    "installed_policy_unchanged": true,
+    "historical_restore_fidelity": "NOT_ESTABLISHED"
+  },
+  "native_browser": {
+    "method": "ACTUAL_CHROME_VIA_INSTALLED_COMPUTER_USE_SKILL",
+    "url": "http://127.0.0.1:8501",
+    "metadata_configuration": "EXPLICIT_PRIVATE_SERVER_ENVIRONMENT",
+    "masked_form_submission": "SEPARATELY_VERIFIED_BY_LIVE_APPTEST",
+    "personas_observed": [
+      "Payroll specialist",
+      "HR business partner #1",
+      "HR business partner #2",
+      "Sales manager"
+    ],
+    "observations": [
+      "Authenticated PostgreSQL policy snapshot while model OFFLINE",
+      "Typed question and disabled Ask; no SQL generated or executed",
+      "Role-filtered HR semantic catalog",
+      "Scoped HR and Sales access-policy metadata",
+      "Grayscale controls and no layout deprecation observed"
+    ],
+    "screenshots": {
+      "ui_health_model_off.png": {
+        "sha256": "f456e0aa5dd602cabd856e7e4acba6c4c3762283c02cb4e03e88637951b7f914",
+        "bytes": 119542,
+        "method": "ACTUAL_NATIVE_CHROME_SKY_CAPTURE",
+        "model_state": "OFFLINE"
+      },
+      "ui_hr2_policy_model_off.png": {
+        "sha256": "ee28c6ba18eb4d7c73a12286bb636315337c677ef15e9f1f8daf7b956a631c60",
+        "bytes": 97944,
+        "method": "ACTUAL_NATIVE_CHROME_SKY_CAPTURE",
+        "model_state": "OFFLINE"
+      },
+      "ui_hr_semantic_model_off.png": {
+        "sha256": "01aeb949403596c62e48103bfb17ffea07f7cb96c91b3c5f5d503bf84d5b99e0",
+        "bytes": 110739,
+        "method": "ACTUAL_NATIVE_CHROME_SKY_CAPTURE",
+        "model_state": "OFFLINE"
+      },
+      "ui_playground_model_off.png": {
+        "sha256": "ab4da66f168c69ac9d7b43b8016857a35a8d85f1a961a25cde39e0db35fbc009",
+        "bytes": 104775,
+        "method": "ACTUAL_NATIVE_CHROME_SKY_CAPTURE",
+        "model_state": "OFFLINE"
+      },
+      "ui_sales_policy_model_off.png": {
+        "sha256": "a0b1371da921ae96680acd9aa3f5649a2c078893ae0ce503f9f41d1056687558",
+        "bytes": 97683,
+        "method": "ACTUAL_NATIVE_CHROME_SKY_CAPTURE",
+        "model_state": "OFFLINE"
+      }
+    }
+  },
+  "actual_windows_launcher": {
+    "one_command_start": "PASS",
+    "ctrl_c_after_bounded_wait_fix": "PASS_NO_TRACEBACK_OWNED_CHILD_REAPED_AND_LISTENER_GONE",
+    "initial_native_attempt": "EXPOSED_DELAYED_INTERRUPT_WITH_UNBOUNDED_WAIT_SUBSEQUENTLY_FIXED",
+    "interrupt_shell_exit_observed": 1,
+    "python_helper_return_130": "UNIT_TESTED_NOT_INFERRED_FROM_SHELL_EXIT",
+    "occupied_port_failure": {
+      "observed_exit_code": 1,
+      "message": "Port 8501 is not available",
+      "original_server_untouched": true
+    }
+  },
+  "tested_implementation_sha256": {
+    "app.py": "f84b2470f583a11101844bc0bc2ef6b81df869fab54fc31f75a0886b2c9a12c5",
+    "ops/serve.py": "0fa8947e3ecdb79d574ff38058e532c78c2f9a169bdb7092e4c45c2e8bcb85b0",
+    "ops/serve_connected.py": "fda36038f06fdc26ad12f5f4a9e00d1afc0ea3fbdfc71dd8bd03e40f0327fa24",
+    "ops/live_ui_verify.py": "c77abcbbed65b7973196bad2e4437783badee11c5e640ed717898614ba0e821a",
+    "pyproject.toml": "f628a6e7f65ce8ce0ef8f9582b48781d8d74977f65331fa6b49b05d54f72ea82",
+    ".streamlit/config.toml": "4680eafb4c6e6052eefad0c8090758ac299f324f7b6045f2893dbe8709e518db",
+    "src/stark_t2sql/db/connections.py": "7459cf47de54d3506839f4859d0155f64c912e33777c6113cfa6e17af75c5d55",
+    "src/stark_t2sql/pipeline/orchestrator.py": "774141ce5968df2f9d7193db32c6fa71094708d7f8df0cde4b26c09cad29e6ad",
+    "src/stark_t2sql/pipeline/metadata.py": "bcb35976b53a108031822cc63c43b672a28450a12bc8bfe1d05384aa0eb22009",
+    "src/stark_t2sql/ui/workspace.py": "855193b80bc7b9e3cbe425787ac5c53983e5cb21a9c5b689022aa98317e229ea",
+    "src/stark_t2sql/ui/settings.py": "b39b79e9e38a140aa89d892b45b1043d9c04135d8dbbf73d8a9f718bdf280c36",
+    "src/stark_t2sql/ui/project_status.py": "6aa145965078a13955d33b90c9368949fa016b49a2516834c12198ad5ad421bf",
+    "src/stark_t2sql/ui/views.py": "6296051d5919d372815c6e39711fa18c9d12b6e23c3dfc7df8828b85b9b0058f",
+    "src/stark_t2sql/ui/architecture.py": "dc74c076cfd14e0648bef2bad4addb738702ef39311f5a32cf625ce75430d715",
+    "src/stark_t2sql/ui/offline_demo.py": "1daa290038640a90b7bbee228423f33df9682d9a0a6ba1dfc4d1aad0270e0699",
+    "tests/test_live_metadata_workspace.py": "0306f46cde128f3e54358ea1d4317ede984cfa93d8a9fc88a1b023eb995845ef",
+    "tests/test_foreground_shutdown.py": "846353c564679d90bf86a950401b182e6e7ba43c357f56662dbe3a2ecffab980",
+    "tests/test_live_ui_readonly_acceptance.py": "04f53e38929d052a5151f10f2686e5b80c8159c4df6567f8f61a2c307bb8ebb6",
+    "tests/test_serve_connected.py": "13972e7441dd53e0f3ce96d6f390057690ba1e761bcb4baa1a688c879e344a7f",
+    "tests/test_ui_rerun_contracts.py": "8ea906a79cf7994337f75c97d0b7a4533ae8965445a93bda3e54ac4826a77999",
+    "tests/test_live_service_status.py": "2ed5bd2dbd7bfc30276e95d4a19fca518dff37918e7fe2c6abb0f9c1894755bd"
+  },
+  "protected_assets": {
+    "schema.sql": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3"
+    },
+    "seed_data.py": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf"
+    },
+    "fixture_pg_dump.sql": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4"
+    },
+    "fixture_manifest.json": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "fb15e54afc4b72e02076614fec108049595ab1879feeabe9871f131fccb2640e"
+    },
+    "policy/access_matrix.yaml": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "85efd46ce237aea0dab8aac57af81c667320508ef841dbf79c5f2eebfefd42e9"
+    },
+    "semantic/catalog.yaml": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "2eb213d793819e51bbae100a842485adafcde16ea6026fcb918247e652b447ed"
+    },
+    "src/inference/prompt_template.txt": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "67d1c6d265202e6bf6abcd1393203e84b92bf9df03207015679339fe807ad6b6"
+    },
+    "STARK_T2SQL FRD 1.8.txt": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "e5814c87f080f8f2bc23c4b7c8299049c9597b3714eb450ad0670ce540f5c162"
+    },
+    "STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "b1ec1d07b9d666a7ade6ea344787800599e5445ca3267351da798703965fe0a7"
+    },
+    "ops/progress.json": {
+      "unchanged_from": "9abe82a7ad8ff263f83b3f581a1509095cae61ba",
+      "sha256": "852b4fe434c7ea744ec78b97c39d02693d66601c04e17f72ccba72c61fe953f3"
+    }
+  },
+  "not_established": {
+    "online_sqlcoder_full_questions": "NOT_EXECUTED_MODEL_DELIBERATELY_OFF",
+    "model_memory_context_approval": "NOT_GRANTED_BY_THIS_EVIDENCE",
+    "real_login_signup": "NOT_IMPLEMENTED_REVIEW_REQUIRED",
+    "admin_and_persona_entitlements": "NOT_IMPLEMENTED",
+    "secure_persistent_secret_storage": "PROPOSED_ONLY_NOT_IMPLEMENTED",
+    "permission_approval_apply_rollback": "NOT_IMPLEMENTED",
+    "faker_preview_export": "NOT_IMPLEMENTED",
+    "principal_spoofing": "KNOWN_SQL_SET_SINGLE_LAYER_DEPENDENCY",
+    "postgresql_16_compliance": "NOT_CLAIMED_ACTUAL_TARGET_IS_17",
+    "historical_307_or_17_check_rerun": "NOT_EXECUTED",
+    "final_r09_holdout_and_production": "NOT_EXECUTED_OR_APPROVED",
+    "merge": "NOT_AUTHORIZED"
+  }
+}
