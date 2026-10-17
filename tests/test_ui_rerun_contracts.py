@@ -213,7 +213,11 @@ def test_real_streamlit_all_seven_navigation_views_remain_offline(project_root, 
             assert any("SIMULATED" in item.value for item in app.warning)
         if name in {"Playground", "Semantic Catalog", "Access Policy"}:
             assert any("BLOCKED" in item.value for item in app.warning)
-            assert not app.selectbox and not app.text_area
+            assert not app.selectbox
+            if name == "Playground":
+                assert app.text_area and app.button(key="stark_ask").disabled
+            else:
+                assert not app.text_area
     # Actual Streamlit reruns also exercise returning to earlier navigation.
     app.sidebar.radio[0].set_value("Health & Status").run()
     assert not app.exception and app.title[0].value == "Local health & status"

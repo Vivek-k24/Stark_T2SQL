@@ -19,8 +19,8 @@ def health(root=ROOT):
     return {
         "Architecture & Progress": progress,
         "Streamlit dependency": "LOCAL READY" if find_spec("streamlit") else "BLOCKED",
-        "Scripted playground": "DEMO",
-        "Secured SQLCoder ↔ PostgreSQL": "BLOCKED — live end-to-end acceptance not established",
+        "Optional offline demo": "SIMULATED — separate from real questions",
+        "Governed SQL execution": "Requires current model health and genuine reviewed runtime bindings",
     }
 
 
@@ -34,6 +34,9 @@ def live_service_status(*, timeout_seconds: float = 0.4) -> dict[str, str]:
     import http.client
     import os
     import socket
+    import math
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 2:
+        raise ValueError("Health checks require a bounded positive timeout.")
 
     def local_port(name: str, default: int) -> int | None:
         try:
@@ -43,7 +46,7 @@ def live_service_status(*, timeout_seconds: float = 0.4) -> dict[str, str]:
         return port if 1024 <= port <= 65535 else None
 
     def configured_loopback(name: str) -> bool:
-        return os.environ.get(name, "127.0.0.1") in {"127.0.0.1", "localhost", "::1"}
+        return os.environ.get(name, "127.0.0.1") == "127.0.0.1"
 
     database = "NOT CONFIGURED"
     pg_port = local_port("STARK_PG_PORT", 5433)
@@ -57,16 +60,18 @@ def live_service_status(*, timeout_seconds: float = 0.4) -> dict[str, str]:
     model = "NOT CONFIGURED"
     model_port = local_port("STARK_LLAMACPP_PORT", 8081)
     if model_port is not None and configured_loopback("STARK_LLAMACPP_HOST"):
-        connection = http.client.HTTPConnection("127.0.0.1", model_port, timeout=timeout_seconds)
+        connection = None
         try:
+            connection = http.client.HTTPConnection("127.0.0.1", model_port, timeout=timeout_seconds)
             connection.request("GET", "/health", headers={"Connection": "close"})
             response = connection.getresponse()
-            model = "ONLINE" if response.status == 200 else "OFFLINE"
+            model = "ONLINE" if response.status == 200 else "LOADING" if response.status == 503 else "OFFLINE"
             response.read(256)
         except (OSError, TimeoutError, http.client.HTTPException):
             model = "OFFLINE"
         finally:
-            connection.close()
+            if connection is not None:
+                connection.close()
     return {"PostgreSQL listener": database, "SQLCoder model": model}
 
 
@@ -89,11 +94,10 @@ def render_evidence(root=ROOT):
             st.caption("Independent review: " + item["review_verdict"])
             st.link_button("Read versioned evidence", item["evidence_url"])
     st.info("INT-01 · " + data["interim"]["state"])
-    st.caption("Actual SQLCoder/PostgreSQL integration remains unverified. "
-               "Remediation merges do not mark whole FRD epics complete.")
+    st.caption("Historical gate evidence. Check Health & Status for current services and authenticated policy inspection.")
 
 
-def render_health():
+def render_health(workspace=None):
     import streamlit as st
     st.title("Local health & status")
     st.success("LIVE · This Streamlit page is running locally. This is UI health, not live SQL execution.")
@@ -101,11 +105,18 @@ def render_health():
     for feature, status in live_service_status().items():
         st.markdown(f"**{feature}:** {status}")
     st.caption("PostgreSQL listener reachability does not confirm credentials, policies, or live query readiness.")
+    st.subheader("Authenticated database capability")
+    if workspace is None:
+        st.info("NOT CHECKED · Open Settings to authenticate existing roles and verify installed policy read-only.")
+    else:
+        st.success("VERIFIED · PostgreSQL authenticated; installed policy, restricted logins and four personas inspected.")
+        st.caption("Read-only snapshot checked at " + workspace.verified_at + ". Refresh verification by submitting Settings again.")
+        st.text(workspace.generation_note)
     st.subheader("Application readiness")
     for feature, status in health().items():
         st.markdown(f"**{feature}:** {status}")
-    st.info("Architecture, Progress and the offline demo work without database or model credentials.")
-    st.caption("SIMULATED examples never submit SQL. Connected execution requires separately reviewed resources and explicit operator opt-in.")
+    st.info("Database metadata and model inference are independent capabilities. SQLCoder is never started by rendering this app.")
+    st.caption("The Offline demo is explicitly SIMULATED. Real questions require an online model and the reviewed FULL runtime.")
 
 
 def render_demo(root=ROOT):

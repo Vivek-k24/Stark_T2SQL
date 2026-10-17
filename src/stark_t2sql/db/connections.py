@@ -339,18 +339,21 @@ class AdminConnectionSource:
     reference routines only. Executors accept exact Runtime/Evaluation types.
     """
 
-    def __init__(self, config: AppConfig, alias_name: str) -> None:
+    def __init__(self, config: AppConfig, alias_name: str, *, environment: Mapping[str, str] | None = None) -> None:
         self.config = config
         self.alias = config.database_alias(alias_name)
         if self.alias.login_role in {"stark_payroll_login", "stark_hr_login", "stark_sales_login"}:
             raise ConfigurationError("Trusted administrative work requires a separate explicitly configured alias.")
         self._closed = False
+        self._environment = None if environment is None else {
+            key: environment[key] for key in (self.alias.database_environment_variable, self.alias.password_environment_variable)
+            if key in environment}
 
     @contextmanager
     def connection(self, *, readonly: bool = True) -> Iterator[Any]:
         if self._closed or type(readonly) is not bool:
             raise ConfigurationError("Administrative source is closed or has an invalid transaction mode.")
-        connection = _open(self.config, self.alias.load_credentials())
+        connection = _open(self.config, self.alias.load_credentials(self._environment))
         try:
             connection.readonly = readonly
             yield connection
@@ -361,6 +364,8 @@ class AdminConnectionSource:
 
     def close(self) -> None:
         self._closed = True
+        if self._environment is not None:
+            self._environment.clear()
 
 
 class RuntimeConnections:
@@ -373,12 +378,16 @@ class RuntimeConnections:
         personas: PersonaRegistry,
         *,
         expected_policy_state_sha256: str | None = None,
+        environment: Mapping[str, str] | None = None,
     ) -> None:
         if type(personas) is not PersonaRegistry:
             raise ConfigurationError("Runtime connections require fixture-derived predefined personas.")
         self.config, self.matrix, self.personas = config, matrix, personas
         self.expected_policy_state_sha256 = _required_digest(expected_policy_state_sha256, label="Installed business policy-state binding")
         self._closed = False
+        self._environment = None if environment is None else {
+            key: environment[key] for alias in config.database_connections
+            for key in (alias.database_environment_variable, alias.password_environment_variable) if key in environment}
 
     def _alias(self, persona: Persona) -> DatabaseConnectionAlias:
         matches = [alias for alias in self.config.database_connections if alias.login_role == persona.login_role]
@@ -394,7 +403,7 @@ class RuntimeConnections:
         role = self.matrix.role(resolved.business_role)
         if resolved.login_role != role.login_role:
             raise ConfigurationError("Persona and policy matrix login roles differ.")
-        credentials = self._alias(resolved).load_credentials()
+        credentials = self._alias(resolved).load_credentials(self._environment)
         connection = _open(self.config, credentials)
         try:
             _audit(connection, self.config, self.matrix, credentials, role)
@@ -405,6 +414,8 @@ class RuntimeConnections:
 
     def close(self) -> None:
         self._closed = True
+        if self._environment is not None:
+            self._environment.clear()
 
 
 @dataclass(frozen=True, slots=True)
