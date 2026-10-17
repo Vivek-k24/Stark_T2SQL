@@ -53,6 +53,11 @@ def main() -> None:
     if navigation == "Offline demo":
         render_demo()
         return
+    if navigation == "Permission Management":
+        from stark_t2sql.ui.permission_management import render_permission_management
+
+        render_permission_management(PROJECT_ROOT)
+        return
     visual_source_available = False
     try:
         require_visual_baseline(PROJECT_ROOT)
