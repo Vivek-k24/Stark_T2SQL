@@ -20,6 +20,7 @@ from .utils.local_only import (
     require_allowed_host_port,
     require_allowed_url,
 )
+from .utils.local_sources import resolve_runtime_path
 
 
 FIXTURE_AS_OF_DATE = date(2026, 10, 12)
@@ -286,13 +287,9 @@ def load_config(
     frd_setting = values.get("STARK_FRD_PATH")
     frd_path = Path(frd_setting) if frd_setting else None
     model_setting = values.get("STARK_GGUF_PATH")
-    model_path = Path(model_setting) if model_setting else None
-    if model_path is not None and not model_path.is_absolute():
-        model_path = project_root / model_path
+    model_path = resolve_runtime_path(model_setting, root=project_root, label="GGUF model") if model_setting else None
     measurement_setting = values.get("STARK_RESOURCE_MEASUREMENTS_PATH")
-    measurement_path = Path(measurement_setting) if measurement_setting else None
-    if measurement_path is not None and not measurement_path.is_absolute():
-        measurement_path = project_root / measurement_path
+    measurement_path = resolve_runtime_path(measurement_setting, root=project_root, label="resource measurements") if measurement_setting else None
 
     # These ports are initial configuration assumptions, not discovered services.
     model_port = _integer_setting(values, "STARK_LLAMACPP_PORT", default=8081)
