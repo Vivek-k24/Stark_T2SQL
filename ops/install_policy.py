@@ -174,8 +174,8 @@ def catalog_checks(connection, matrix: PolicyMatrix, *, definer_owner: str) -> l
                 observed = scalar("SELECT pg_catalog.has_table_privilege(%s, %s, 'SELECT')", (spec.business_role, relation))
             else:
                 observed = scalar("SELECT pg_catalog.has_column_privilege(%s, %s, %s, 'SELECT')", (spec.business_role, relation, spec.column))
-            check(f"grant:{spec.business_role}:{spec.table}:{spec.column or '*'}", observed is spec.expected_access,
-                  {"expected": spec.expected_access, "observed": observed})
+            check(f"grant:{spec.business_role}:{spec.table}:{spec.column or '*'}", observed is spec.expected_select,
+                  {"expected": spec.expected_select, "observed": observed})
         for role in matrix.roles:
             leaked = [t for t in matrix.tables if scalar("SELECT pg_catalog.has_any_column_privilege(%s, %s, 'SELECT')",
                                                          (role.login_role, f"{matrix.schema}.{t}"))]

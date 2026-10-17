@@ -123,3 +123,49 @@ def test_probe_expectations_cover_frd_section_6_6_negative_rows():
                      "hr_payroll_results", "hr_set_role_payroll", "hr_set_config_after_role_switch",
                      "sales_pg_read_file"):
         assert install_policy.EXPECTED_SQLSTATE[required] == "42501"
+
+
+def test_catalog_checks_evaluates_expected_select(project_root):
+    from unittest.mock import MagicMock, patch
+    from stark_t2sql.policy.loader import authorization_specs, load_policy
+
+    config = install_policy.load_config(root=project_root)
+    matrix = load_policy(config.paths.policy_matrix)
+    columns = source_columns((project_root / "schema.sql").read_bytes(), expected_schema=matrix.schema)
+
+    specs = authorization_specs(matrix, columns)
+    assert len(specs) == 273
+    for spec in specs:
+        assert hasattr(spec, "expected_select")
+        assert not hasattr(spec, "expected_access")
+
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+    def custom_execute(query, params=()):
+        if "rolconfig" in query:
+            mock_cursor.fetchone.return_value = ([
+                "statement_timeout=15000ms", "default_transaction_read_only=on",
+                "work_mem=4096kB", "temp_file_limit=65536kB", "search_path=pg_catalog, public, pg_temp",
+            ],)
+        elif "pg_proc" in query and "pronargs" in query:
+            mock_cursor.fetchall.return_value = [(0, True, "s", "stark_scope_owner", ["search_path=pg_catalog, public, pg_temp"])]
+        elif "pg_class" in query:
+            mock_cursor.fetchone.return_value = (True, True)
+        elif "pg_policies" in query:
+            mock_cursor.fetchall.return_value = [("stark_select_app_hr_bp",), ("stark_select_app_payroll",)]
+        else:
+            mock_cursor.fetchone.return_value = (True,)
+            mock_cursor.fetchall.return_value = []
+
+    mock_cursor.execute.side_effect = custom_execute
+
+    with patch("stark_t2sql.db.catalog.snapshot_schema") as mock_snapshot:
+        mock_snapshot.return_value.columns_by_table = columns
+        checks = install_policy.catalog_checks(mock_conn, matrix, definer_owner="stark_scope_owner")
+        assert len(checks) >= 273
+        grant_checks = [c for c in checks if c["check"].startswith("grant:")]
+        assert len(grant_checks) == 273
+        for c in grant_checks:
+            assert "expected" in c["detail"]
