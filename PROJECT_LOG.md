@@ -60,3 +60,21 @@ Script outside the repository. It uses the repository's context builder, prompt 
 
 ### Decisions and approvals pending
 See `docs/POLICY_INSTALL_PLAN.md` §8 and `H:\STARK_Runtime\CLAUDE_BACKEND_HANDOFF.md`. **No database, service, credential or configuration change was made.**
+
+---
+
+## 2026-10-17 — Model-independent live frontend (Codex, owner handoff)
+
+Continued the existing `feat/live-ui-offline-model` branch in `H:\STARK_T2SQL_MAIN_SYNC` from `9abe82a7ad8ff263f83b3f581a1509095cae61ba`, following `docs/CODEX_LIVE_UI_HANDOFF.md`. Existing [draft PR #28](https://github.com/Vivek-k24/Stark_T2SQL/pull/28) targets `main`; no merge is authorized. The original `H:\STARK T2SQL` checkout and its dirty work remain untouched. Earlier entries above are historical observations and are not rewritten as current state.
+
+**Implemented:** a model-independent trusted read-only metadata facade; private credential mappings and masked Settings; session-bound safe workspace projections; four actual fixture-derived persona views with SQLCoder off; independent TCP/authenticated-policy/model status; visible question input with disabled Ask/no SQL; grayscale controls; all six Streamlit layout API migrations; and foreground owned-child shutdown. A Windows execution test exposed delayed Ctrl+C during an unbounded wait; bounded waiting fixed it. The current source-only permission preview remains nonpersistent/non-executable. Real auth/admin mutations and Data Lab are explicitly unimplemented.
+
+**Offline measured:** actual initial feature-branch baseline **1,824 passed / 64 skipped / 1 failed** (preexisting health-constructor failure). An intermediate broad run passed **1,851 / 66 skipped** in 111.95 s. Final full suite after ten explicit health-sensor cases: **1,861 passed / 66 skipped / 0 failed** in 117.58 s; the original skips remain and two new read-only live tests are opt-in. Final focused suite **124 passed / 0 failed / 0 skipped** in 16.63 s. No parser approval or external-input acceptance was invented. Nothing was installed.
+
+**Actual PostgreSQL measured:** fixed existing PostgreSQL 17 `127.0.0.1:5433/stark_test`; separately opted-in tests **2 passed**, including real Streamlit AppTest masked form and all four persona views. Read-only runner **14/14 passed**: independent scoped employee counts **500 / 102 / 102 / 10**, seven SQLSTATE 42501 projection denials, distinct nonempty HR scopes, unchanged twelve-table row hashes and installed-policy digest `62f34044d75b73bc37730c6e716d9b3a4c01adf4f0777fba309ba0036a519a5d`. These are preservation and finite access checks, not a claim of historical restore fidelity or universal enforcement. Historical 307/307 and 17/17 backend evidence was not rerun.
+
+**Actual Windows/browser measured:** one-command app on numeric loopback 8501; Chrome shows verified DB/model OFFLINE, disabled Ask for typed question, governed HR catalog and scoped HR/Sales policies. Native screenshots are under `docs/evidence/`. Corrected launcher Ctrl+C stopped and reaped its child without traceback or leftover listener. A second real launch on occupied 8501 exited 1 with a visible port error. Browser configured-environment and live AppTest form evidence are distinguished.
+
+**Not demonstrated / pending review:** SQLCoder remained off; no online question or final FRD/R09 acceptance. Known principal-setting single-layer dependency remains. Real app accounts, authorization, secure secret persistence and permission execution need the documented threat-model/integration/enablement review; no auth framework or secret store was installed. Faker diversification is not implemented; no fixture mutation is authorized. PostgreSQL 17 is the owner-designated target, a recorded deviation from historical FRD 16. No database, role, policy, service or firewall change, model autostart, scheduler or automatic agent dispatch occurred.
+
+See `Codex_Live_UI_Work_Log.md`, `docs/LIVE_UI_IMPLEMENTATION_TRACKER.md`, `docs/LIVE_UI_OPERATOR_GUIDE.md` and `docs/LIVE_UI_SECURITY_REVIEW.md` for chronology, exact launch/reproduction, evidence and the concrete unapproved authentication/DPAPI proposal. Stop for owner review; do not merge.

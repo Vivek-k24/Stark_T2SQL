@@ -694,14 +694,14 @@ def render_offline_demo(root: Path | None = None) -> None:
                 {"deduction_id": i, "employee_id": 100 + i, "type": "401k", "amount": "$250.00"}
                 for i in range(1, 11)
             ])
-            st.dataframe(sample_df, hide_index=True, use_container_width=True)
+            st.dataframe(sample_df, hide_index=True, width="stretch")
             st.caption("Showing first 10 rows of 1,000 capped simulated rows.")
         elif c["known"] is not None and eval_result["value"] == str(c["known"]):
             sample_df = pd.DataFrame([{c["metric"]: c["known"]}])
-            st.dataframe(sample_df, hide_index=True, use_container_width=True)
+            st.dataframe(sample_df, hide_index=True, width="stretch")
         else:
             sample_df = pd.DataFrame([{ "outcome": eval_result["outcome"], "sample_data": eval_result["value"] }])
-            st.dataframe(sample_df, hide_index=True, use_container_width=True)
+            st.dataframe(sample_df, hide_index=True, width="stretch")
 
     with tab_sql:
         st.caption("Developer-facing SQL illustration · manually scripted · not executed in demo")

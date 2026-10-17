@@ -35,7 +35,7 @@ class PersonaViewApplication(Protocol):
     def policy_view(self, persona: Persona) -> tuple[SafePolicyRow, ...]: ...
 
 
-NAVIGATION = ("Health & Status", "Architecture", "Progress", "Offline demo", "Playground", "Semantic Catalog", "Access Policy")
+NAVIGATION = ("Health & Status", "Playground", "Semantic Catalog", "Access Policy", "Settings", "Admin Panel", "Permission Management", "Login / Signup", "Data Lab", "Architecture", "Progress", "Offline demo")
 SERVICE_UNAVAILABLE = "A required local resource is unavailable. Connected views are paused."
 REQUEST_UNAVAILABLE = "The request could not be completed. Try again when the local services are available."
 
@@ -44,36 +44,40 @@ REQUEST_UNAVAILABLE = "The request could not be completed. Try again when the lo
 # System fonts and native Streamlit widgets need no external font/image URL.
 _LOCAL_CSS = """
 <style>
-  .stApp { background: #f3f6fb; color: #172439; font-family: "Segoe UI", system-ui, sans-serif; }
+  .stApp { background: #f5f5f5; color: #202020; font-family: "Segoe UI", system-ui, sans-serif; }
   .block-container { max-width: 106rem; padding: 2rem 3rem 3.5rem; }
-  [data-testid="stSidebar"] { background: #102039; border-right: 1px solid #29384e; }
+  [data-testid="stSidebar"] { background: #161616; border-right: 1px solid #444444; }
   [data-testid="stSidebar"] h1,
   [data-testid="stSidebar"] h2,
-  [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] { color: #eef5ff; }
+  [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] { color: #fafafa; }
   [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
-  [data-testid="stSidebar"] label { color: #adbed4; }
+  [data-testid="stSidebar"] label { color: #cccccc; }
   [data-testid="stSidebar"] [role="radiogroup"] > label {
     padding: .7rem .9rem; border-radius: .65rem; margin: .15rem 0;
   }
   [data-testid="stSidebar"] [role="radiogroup"] > label:has(input:checked) {
-    background: #2e466b; color: #ffffff;
+    background: #444444; color: #ffffff;
   }
   [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {
-    background: #ffffff; border-radius: 15px; border-color: #e1e8f1;
-    box-shadow: 0 8px 34px rgba(31,51,80,.042);
+    background: #ffffff; border-radius: 15px; border-color: #dddddd;
+    box-shadow: 0 8px 34px rgba(0,0,0,.042);
   }
   [data-testid="stMain"] h1 { font-size: 1.7rem; letter-spacing: -.04rem; }
   [data-testid="stMain"] h3 { font-size: 1rem; letter-spacing: -.015rem; }
-  [data-testid="stMain"] [data-testid="stCaptionContainer"] { color: #65748a; }
+  [data-testid="stMain"] [data-testid="stCaptionContainer"] { color: #606060; }
   [data-testid="stMain"] input,
-  [data-testid="stMain"] textarea { background: #ffffff; color: #172439; border-radius: 10px; }
+  [data-testid="stMain"] textarea { background: #ffffff; color: #202020; border-radius: 10px; }
   [data-testid="stBaseButton-primary"] {
-    background: #355ed8; border-color: #355ed8; color: #ffffff; border-radius: 10px;
+    background: #222222; border-color: #222222; color: #ffffff; border-radius: 10px;
   }
-  [data-testid="stBaseButton-primary"]:hover { background: #2748ba; border-color: #2748ba; }
+  [data-testid="stBaseButton-primary"]:hover { background: #444444; border-color: #444444; }
   button:focus-visible, input:focus-visible, textarea:focus-visible {
-    outline: 3px solid #9bb4ff !important; outline-offset: 3px;
+    outline: 3px solid #888888 !important; outline-offset: 3px;
   }
+  [data-testid="stAlert"], [data-testid="stAlertContainer"] {
+    background: #eeeeee !important; color: #303030 !important; border-color: #888888 !important;
+  }
+  [data-testid="stAlert"] svg { color: #555555 !important; }
   @media (min-width: 900px) {
     [data-testid="stSidebar"] { min-width: 244px; max-width: 244px; }
   }
@@ -109,7 +113,7 @@ def render_shell() -> tuple[str, DeltaGenerator]:
 def render_page_heading(title: str, description: str) -> None:
     import streamlit as st
 
-    st.caption("STARK CONSULTANTS / OFFLINE WORKSPACE")
+    st.caption("STARK CONSULTANTS / LOCAL WORKSPACE")
     st.title(title)
     st.caption(description)
     st.divider()
@@ -183,20 +187,23 @@ def render_safe_response(response: SafeResponse) -> None:
 
             public_cells = response.to_dict()["rows"]
             frame = pd.DataFrame(public_cells, columns=list(response.columns))
-            st.dataframe(frame, hide_index=True, use_container_width=True)
+            st.dataframe(frame, hide_index=True, width="stretch")
         if not response.rows:
             st.info("No permitted rows matched this question.")
     if response.elapsed_ms is not None:
         st.caption(f"Elapsed time: {response.elapsed_ms / 1000:.2f} seconds")
 
 
-def render_playground(application: PersonaViewApplication, persona: Persona) -> None:
+def render_playground(application: PersonaViewApplication, persona: Persona, *, generation_available: bool = True, availability_note: str | None = None) -> None:
     import streamlit as st
 
     render_page_heading(
         "Query playground",
         "Ask one business question within the selected persona's permitted scope.",
     )
+    if not generation_available:
+        clear_answer(st.session_state)
+        st.warning(availability_note or "SQLCoder offline — no query generated or executed.")
     inputs_column, outcome_column = st.columns((0.92, 1.28), gap="medium")
     with inputs_column:
         with st.container(border=True):
@@ -209,7 +216,7 @@ def render_playground(application: PersonaViewApplication, persona: Persona) -> 
             st.caption("The question and explicit date are sent unchanged to the governed pipeline.")
             button_slot = st.empty()
             submitted = button_slot.button(
-                "Ask", type="primary", disabled=not question.strip() or type(as_of_date) is not date,
+                "Ask", type="primary", disabled=not generation_available or not question.strip() or type(as_of_date) is not date,
                 key="stark_ask"
             )
             response = current_answer(
@@ -218,7 +225,7 @@ def render_playground(application: PersonaViewApplication, persona: Persona) -> 
                 question=question,
                 as_of_date=as_of_date,
             )
-            if submitted:
+            if submitted and generation_available:
                 with request_guard(st.session_state) as acquired:
                     if not acquired:
                         st.info("A question is already processing. Wait for it to finish before asking again.")

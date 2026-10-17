@@ -12,10 +12,20 @@ From the repository root with the required Python dependencies installed:
 python -m ops.serve
 ```
 
-Open http://127.0.0.1:8501 in your browser. This launches Streamlit only on
-numeric loopback, with connected SQL disabled. Health, Architecture, Progress
-and the original E0 offline demonstration work without PostgreSQL or the model.
-The example results are **DEMO / STATIC / SIMULATED**.
+Open http://127.0.0.1:8501 in your browser. This launches the real app only on
+numeric loopback. Open **Settings** to authenticate the existing fixed STARK
+database and inspect installed policy/persona metadata read-only. Semantic
+Catalog and Access Policy work while SQLCoder is off. The Playground accepts
+text but disables Ask while inference is unavailable; it supplies no fake result.
+Rendering never starts the model. The separate Offline demo remains **SIMULATED**.
+
+See [the local operator guide](../docs/LIVE_UI_OPERATOR_GUIDE.md) for masked,
+nonpersistent setup and the independently gated FULL runtime. Existing private
+STARK credential variables plus an explicit installation-binding path may also
+supply read-only metadata; credentials never populate widgets or reports.
+Ctrl+C stops and reaps the owned foreground child; genuine failures retain a
+nonzero status. Real accounts, administrator actions and PostgreSQL permission
+mutations remain disabled pending their separate security/enablement reviews.
 
 An optional UI-only Microsoft Edge / Playwright smoke test is available via
 `python -m ops.smoke_ui`. It launches and stops its own local server.

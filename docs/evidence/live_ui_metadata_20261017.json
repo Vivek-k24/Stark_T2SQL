@@ -1,0 +1,124 @@
+{
+  "kind": "ACTUAL_READONLY_LIVE_UI_METADATA_V1",
+  "executed_at": "2026-10-17T19:17:07.700964+00:00",
+  "target": "127.0.0.1:5433/stark_test",
+  "policy_state_sha256": "62f34044d75b73bc37730c6e716d9b3a4c01adf4f0777fba309ba0036a519a5d",
+  "checks": [
+    {
+      "check": "independent_scope_count",
+      "persona": "Payroll specialist",
+      "observed_count": 500,
+      "expected_count": 500,
+      "passed": true
+    },
+    {
+      "check": "forbidden_projection_1",
+      "persona": "Payroll specialist",
+      "sqlstate": "42501",
+      "passed": true
+    },
+    {
+      "check": "independent_scope_count",
+      "persona": "HR business partner #1",
+      "observed_count": 102,
+      "expected_count": 102,
+      "passed": true
+    },
+    {
+      "check": "forbidden_projection_1",
+      "persona": "HR business partner #1",
+      "sqlstate": "42501",
+      "passed": true
+    },
+    {
+      "check": "forbidden_projection_2",
+      "persona": "HR business partner #1",
+      "sqlstate": "42501",
+      "passed": true
+    },
+    {
+      "check": "independent_scope_count",
+      "persona": "HR business partner #2",
+      "observed_count": 102,
+      "expected_count": 102,
+      "passed": true
+    },
+    {
+      "check": "forbidden_projection_1",
+      "persona": "HR business partner #2",
+      "sqlstate": "42501",
+      "passed": true
+    },
+    {
+      "check": "forbidden_projection_2",
+      "persona": "HR business partner #2",
+      "sqlstate": "42501",
+      "passed": true
+    },
+    {
+      "check": "independent_scope_count",
+      "persona": "Sales manager",
+      "observed_count": 10,
+      "expected_count": 10,
+      "passed": true
+    },
+    {
+      "check": "forbidden_projection_1",
+      "persona": "Sales manager",
+      "sqlstate": "42501",
+      "passed": true
+    },
+    {
+      "check": "forbidden_projection_2",
+      "persona": "Sales manager",
+      "sqlstate": "42501",
+      "passed": true
+    },
+    {
+      "check": "two_distinct_nonempty_hr_scopes",
+      "passed": true
+    },
+    {
+      "check": "all_fixture_rows_unchanged",
+      "passed": true
+    },
+    {
+      "check": "installed_policy_unchanged",
+      "passed": true
+    }
+  ],
+  "passed": 14,
+  "failed": 0,
+  "fixture_rows": {
+    "departments": 37,
+    "divisions": 10,
+    "employee_compensation": 950,
+    "employees": 500,
+    "hr_bp_assignments": 6,
+    "leave_balances": 2610,
+    "locations": 7,
+    "payroll_deductions": 18368,
+    "payroll_earnings": 18364,
+    "payroll_results": 9184,
+    "payroll_runs": 21,
+    "positions": 20
+  },
+  "fixture_row_sha256": {
+    "departments": "4e170afaa40e41156ba9cadad8e3c8e35d4bf7e7bc5254cebd20e335b971b7f4",
+    "divisions": "fc46a149c6c07e649361cd47ced02922eb73bf605b5a921833c43087b387a5d5",
+    "employee_compensation": "e08f362218dd0af36fefa5c31bbbd07dc1e4066e1a22cb36f9f71b57544a3692",
+    "employees": "174ba0a5cf6769bf0cc4520d02b4e4885dea7d8d927e3e1f2b8929fcac6a1dd1",
+    "hr_bp_assignments": "30c1e48c123738c50a659ec4c29b5c42cc25722cd10f493ed17d6625e6384588",
+    "leave_balances": "a14e7ed5cfdd17cb9b2974f1607f724cc8e47c8cb1c753b3509d52397031aac0",
+    "locations": "5f5f84ab2aa10079828136f6706ffd455f6d299e165b49a210bda7418fb5ffb1",
+    "payroll_deductions": "43fee036416870fdecfc5f28e3dd4479e4e25219269726b88fd52a6edc1c0eb4",
+    "payroll_earnings": "24fe2ba67b0b8491e9dfa7ca97755947b8825b414e011c047e14da0231d790b5",
+    "payroll_results": "df7ec1108f34669274a0c150afb6538ac238e8931364bf190f6cf83b776d1fff",
+    "payroll_runs": "e340801d966dc29b7d5d01517eb56092673b45c031a6541e2179d37f990efe64",
+    "positions": "e9ac87191be56a577719ff67ade6767fe9dc3766e094402a5e72a54170426693"
+  },
+  "model_inference": "NOT_EXECUTED",
+  "browser": "NOT_ESTABLISHED_BY_THIS_RUN",
+  "principal_spoofing": "KNOWN_SQL_SET_SINGLE_LAYER_DEPENDENCY",
+  "production_promotion": "NOT_APPROVED"
+}

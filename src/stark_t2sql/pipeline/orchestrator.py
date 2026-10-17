@@ -287,7 +287,7 @@ class HarnessApplication:
             return answer(persona, question, as_of_date, mode)
 
 
-def compose_persona_runtime(config: AppConfig, inputs: RuntimeSourceInputs) -> PersonaApplication:
+def compose_persona_runtime(config: AppConfig, inputs: RuntimeSourceInputs, *, environment: Mapping[str, str] | None = None) -> PersonaApplication:
     """Explicit future startup only; read real inputs before opening metadata.
 
     Every connection here is trusted startup metadata/fixture resolution owned
@@ -318,7 +318,7 @@ def compose_persona_runtime(config: AppConfig, inputs: RuntimeSourceInputs) -> P
         reference_alias.database_environment_variable, inputs.admin_password_environment_variable,
     )
     metadata_config = replace(config, database_connections=(*config.database_connections, admin_alias))
-    admin = AdminConnectionSource(metadata_config, admin_alias.alias)
+    admin = AdminConnectionSource(metadata_config, admin_alias.alias, environment=environment)
     try:
         with admin.connection(readonly=True) as connection:
             snapshot = snapshot_schema(connection, matrix.schema)
@@ -333,7 +333,7 @@ def compose_persona_runtime(config: AppConfig, inputs: RuntimeSourceInputs) -> P
         catalog = load_catalog(config.paths.semantic_catalog, snapshot, matrix)
     finally:
         admin.close()
-    source = RuntimeConnections(config, matrix, personas, expected_policy_state_sha256=installed)
+    source = RuntimeConnections(config, matrix, personas, expected_policy_state_sha256=installed, environment=environment)
     authority = ValidationAuthority(validator, policy_fingerprint=matrix.sha256, personas=personas)
     runtime = _PipelineRuntime(
         config, matrix, personas, snapshot, catalog, template, client, authority,

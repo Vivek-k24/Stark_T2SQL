@@ -671,7 +671,7 @@ def render_architecture() -> None:
                     candidate.title,
                     key=f"architecture_stage_card_{candidate.number}",
                     type="primary" if candidate.number == stage_number else "secondary",
-                    use_container_width=True,
+                    width="stretch",
                     on_click=_select_stage,
                     args=(candidate.number,),
                 )
@@ -752,7 +752,7 @@ def render_progress() -> None:
                     f"{candidate.ref} - {candidate.title}",
                     key=f"progress_epic_card_{candidate.ref}",
                     type="primary" if candidate.ref == selected_ref else "secondary",
-                    use_container_width=True,
+                    width="stretch",
                     on_click=_select_epic,
                     args=(candidate.ref,),
                 )
