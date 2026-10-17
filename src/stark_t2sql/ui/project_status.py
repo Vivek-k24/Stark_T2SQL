@@ -24,6 +24,52 @@ def health(root=ROOT):
     }
 
 
+
+def live_service_status(*, timeout_seconds: float = 0.4) -> dict[str, str]:
+    """Read-only loopback service checks; never load credentials or a model.
+
+    TCP reachability establishes a PostgreSQL listener, not authentication,
+    catalog integrity, RLS enforcement, or readiness for governed queries.
+    """
+    import http.client
+    import os
+    import socket
+
+    def local_port(name: str, default: int) -> int | None:
+        try:
+            port = int(os.environ.get(name, str(default)))
+        except (TypeError, ValueError):
+            return None
+        return port if 1024 <= port <= 65535 else None
+
+    def configured_loopback(name: str) -> bool:
+        return os.environ.get(name, "127.0.0.1") in {"127.0.0.1", "localhost", "::1"}
+
+    database = "NOT CONFIGURED"
+    pg_port = local_port("STARK_PG_PORT", 5433)
+    if pg_port is not None and configured_loopback("STARK_PG_HOST"):
+        try:
+            with socket.create_connection(("127.0.0.1", pg_port), timeout=timeout_seconds):
+                database = "LISTENING — authentication not checked"
+        except (OSError, TimeoutError):
+            database = "OFFLINE"
+
+    model = "NOT CONFIGURED"
+    model_port = local_port("STARK_LLAMACPP_PORT", 8081)
+    if model_port is not None and configured_loopback("STARK_LLAMACPP_HOST"):
+        connection = http.client.HTTPConnection("127.0.0.1", model_port, timeout=timeout_seconds)
+        try:
+            connection.request("GET", "/health", headers={"Connection": "close"})
+            response = connection.getresponse()
+            model = "ONLINE" if response.status == 200 else "OFFLINE"
+            response.read(256)
+        except (OSError, TimeoutError, http.client.HTTPException):
+            model = "OFFLINE"
+        finally:
+            connection.close()
+    return {"PostgreSQL listener": database, "SQLCoder model": model}
+
+
 def render_evidence(root=ROOT):
     import streamlit as st
     st.subheader("Reviewed remediation progress")
@@ -51,6 +97,11 @@ def render_health():
     import streamlit as st
     st.title("Local health & status")
     st.success("LIVE · This Streamlit page is running locally. This is UI health, not live SQL execution.")
+    st.subheader("Live local services")
+    for feature, status in live_service_status().items():
+        st.markdown(f"**{feature}:** {status}")
+    st.caption("PostgreSQL listener reachability does not confirm credentials, policies, or live query readiness.")
+    st.subheader("Application readiness")
     for feature, status in health().items():
         st.markdown(f"**{feature}:** {status}")
     st.info("Architecture, Progress and the offline demo work without database or model credentials.")
