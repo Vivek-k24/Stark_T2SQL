@@ -58,8 +58,7 @@ def render_health():
 
 
 def render_demo(root=ROOT):
-    import streamlit as st
-    import streamlit.components.v1 as components
-    st.title("Offline E0 demo")
-    st.warning("DEMO · STATIC · SIMULATED · Every example result is scripted; no SQL or model call is performed.")
-    components.html((root / "STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html").read_text(encoding="utf-8"), height=950, scrolling=True)
+    from stark_t2sql.ui.offline_demo import render_offline_demo
+
+    render_offline_demo(root)
+
