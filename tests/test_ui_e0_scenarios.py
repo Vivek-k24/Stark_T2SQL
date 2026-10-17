@@ -56,7 +56,7 @@ def test_mock_application_exposes_four_canonical_personas(mock_app):
     roles = tuple(p.business_role for p in personas)
     assert roles == ("app_payroll", "app_hr_bp", "app_hr_bp", "app_sales_mgr")
     principals = tuple(p.principal_id for p in personas)
-    assert principals == (326, 47, 361, 7)
+    assert principals == (326, 47, 361, 1)
 
 
 # ---------------------------------------------------------------------------

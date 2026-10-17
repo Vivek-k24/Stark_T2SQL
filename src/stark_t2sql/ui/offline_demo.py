@@ -25,10 +25,15 @@ from stark_t2sql.pipeline.response import SafeConcept, SafePolicyRow
 # Canonical Persona Definitions
 # ---------------------------------------------------------------------------
 
-PAYROLL_PERSONA = Persona("Payroll specialist", "app_payroll", 326, "app_payroll_login")
-HR1_PERSONA = Persona("HR business partner #1", "app_hr_bp", 47, "app_hr_bp_login")
-HR2_PERSONA = Persona("HR business partner #2", "app_hr_bp", 361, "app_hr_bp_login")
-SALES_PERSONA = Persona("Sales manager", "app_sales_mgr", 7, "app_sales_mgr_login")
+# Offline mock values only. Login roles follow policy/access_matrix.yaml. The
+# principals are the ones db.persona.resolve_personas derives from the committed
+# spb_2026_10_12 fixture: 326, HR 47/361 (distinct division scopes) and Sales
+# manager 1 (lowest active Sales-division manager with direct reports). The
+# live runtime always re-derives them at startup and never uses these objects.
+PAYROLL_PERSONA = Persona("Payroll specialist", "app_payroll", 326, "stark_payroll_login")
+HR1_PERSONA = Persona("HR business partner #1", "app_hr_bp", 47, "stark_hr_login")
+HR2_PERSONA = Persona("HR business partner #2", "app_hr_bp", 361, "stark_hr_login")
+SALES_PERSONA = Persona("Sales manager", "app_sales_mgr", 1, "stark_sales_login")
 
 CANONICAL_PERSONAS: tuple[Persona, ...] = (
     PAYROLL_PERSONA,
@@ -53,7 +58,7 @@ ROLE_INFO: dict[str, dict[str, str]] = {
     "app_sales_mgr": {
         "label": "Sales manager",
         "role": "app_sales_mgr",
-        "principal": "7 (fixture-derived)",
+        "principal": "1 (fixture-derived)",
         "hint": "Selected employee columns only (5 columns), direct-report row-level security.",
     },
 }
@@ -493,7 +498,8 @@ class MockPersonaApplication:
             else:
                 if "sales" in persona.business_role:
                     columns = EMP_SALES
-                    rows = ((101, "Jane", "Doe", 4, 7), (102, "Bob", "Smith", 4, 7))
+                    rows = ((101, "Jane", "Doe", 4, SALES_PERSONA.principal_id),
+                            (102, "Bob", "Smith", 4, SALES_PERSONA.principal_id))
                 elif "hr" in persona.business_role:
                     columns = EMP_HR[:6]
                     rows = ((47, "Alice", "Wong", "alice@co.local", "2022-01-15", None),)

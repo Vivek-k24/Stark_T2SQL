@@ -43,9 +43,9 @@ Additionally, full repository regression testing confirmed **1,675 passed, 64 sk
 
 ## 3. Scenario Coverage Matrix (26 Scripted Cases)
 
-All 26 scripted cases from the approved visual prototype were rendered across the four personas. The outcomes and stopping layers below are the **E0 scripted expectations** served by the mock backend. They were not observed from the validator, database or model. Sales principal `7` is a mock value. The live sales principal is derived from the fixture at startup.
+All 26 scripted cases from the approved visual prototype were rendered across the four personas. The outcomes and stopping layers below are the **E0 scripted expectations** served by the mock backend. They were not observed from the validator, database or model. The mock Sales principal `1` is the manager that the documented derivation rules select from the committed fixture. The live runtime re-derives every principal at startup.
 
-| # | Case ID | Category | Question Summary | Payroll (326) | HR BP 1 & 2 (47/361) | Sales Mgr (mock 7) | Scripted Stopping Layer | UI render |
+| # | Case ID | Category | Question Summary | Payroll (326) | HR BP 1 & 2 (47/361) | Sales Mgr (1) | Scripted Stopping Layer | UI render |
 | :-: | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :-: |
 | 1 | `active` | Headcount | Active employee headcount | **ANSWERED** (435) | **ANSWERED** (Scoped) | **BLOCKED_DB** | None / DB Column | PASS |
 | 2 | `engineering` | Headcount | Engineering division headcount | **ANSWERED** | **ANSWERED** (Scoped) | **BLOCKED_DB** | None / DB Column | PASS |

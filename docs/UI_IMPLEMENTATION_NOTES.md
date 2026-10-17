@@ -76,9 +76,9 @@ The application models four canonical business personas:
 | **Payroll specialist** | `app_payroll` | `326` | `stark_payroll_login` | Full access to employee, compensation, payroll, and leave records. `hr_bp_assignments` restricted. |
 | **HR business partner #1** | `app_hr_bp` | `47`* | `stark_hr_login` | Employee and leave records restricted to assigned divisions via `hr_bp_current_divisions()`. Compensation blocked. |
 | **HR business partner #2** | `app_hr_bp` | `361`* | `stark_hr_login` | Identical HR role permissions with distinct assigned divisions. |
-| **Sales manager** | `app_sales_mgr` | fixture-derived (mock: `7`) | `stark_sales_login` | Direct-report employee rows only (`manager_id = principal_id`). Limited to 5 columns. Compensation and leave denied. |
+| **Sales manager** | `app_sales_mgr` | `1`* (fixture-derived) | `stark_sales_login` | Direct-report employee rows only (`manager_id = principal_id`). Limited to 5 columns. Compensation and leave denied. |
 
-Login role names follow `policy/access_matrix.yaml`. \*The live runtime resolves the HR principals at startup (`db.persona.resolve_personas`; 364 is the FRD fallback), and it derives the Sales manager from the fixture. The offline mock in `offline_demo.py` currently uses placeholder `app_*_login` names and principal `7`. Those are mock values only and should be aligned with these names.
+Login role names follow `policy/access_matrix.yaml`. \*The offline mock in `offline_demo.py` uses these values: the access-matrix login names and the principals the documented `db.persona.resolve_personas` rules select from the committed `spb_2026_10_12` fixture. HR 47 and 361 have distinct division scopes. The Sales manager is 1, the lowest active Sales-division manager with direct reports. `tests/test_ui_mock_persona_alignment.py` guards that alignment. The live runtime never uses the mock objects. It re-derives every principal at startup (364 is the FRD fallback for HR).
 
 ### Governance Notice:
 The sidebar and playground prominently feature the disclaimer:
