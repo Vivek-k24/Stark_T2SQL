@@ -68,7 +68,7 @@ def test_rls_row_scope_change_preview(policy_source):
         PermissionChange("column_select", "app_sales_mgr", "employees", "grant", "nonexistent"),
         PermissionChange("row_scope", "app_hr_bp", "departments", proposed_scope="all"),
         PermissionChange("row_scope", "app_hr_bp", "employees", proposed_scope="malicious"),
-        PermissionChange("table_select", "app_sales_mgr", "employees", "grant"),
+        PermissionChange("table_select", "app_payroll", "employees", "grant"),
     ],
 )
 def test_unrecognized_or_noop_changes_rejected(policy_source, change):
