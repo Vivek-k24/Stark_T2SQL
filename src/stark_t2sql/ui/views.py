@@ -35,7 +35,7 @@ class PersonaViewApplication(Protocol):
     def policy_view(self, persona: Persona) -> tuple[SafePolicyRow, ...]: ...
 
 
-NAVIGATION = ("Health & Status", "Architecture", "Progress", "Offline demo", "Playground", "Semantic Catalog", "Access Policy")
+NAVIGATION = ("Health & Status", "Architecture", "Progress", "Offline demo", "Playground", "Semantic Catalog", "Access Policy", "Permission Management")
 SERVICE_UNAVAILABLE = "A required local resource is unavailable. Connected views are paused."
 REQUEST_UNAVAILABLE = "The request could not be completed. Try again when the local services are available."
 
