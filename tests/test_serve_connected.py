@@ -118,7 +118,7 @@ def test_main_executes_only_prepared_foreground_command(launch_sources, monkeypa
     plan = serve_connected.build_launch(root, bindings, connected_acknowledged=True, environment={"STARK_ENABLE_CONNECTED_UI": "1", "SECRET": "TEST_ONLY_SECRET"})
     monkeypatch.setattr(serve_connected, "build_launch", lambda *args, **kwargs: plan)
     calls = []
-    monkeypatch.setattr(serve_connected.subprocess, "call", lambda *args, **kwargs: calls.append((args, kwargs)) or 7)
+    monkeypatch.setattr(serve_connected, "run_foreground", lambda *args, **kwargs: calls.append((args, kwargs)) or 7)
     assert serve_connected.main(["--runtime-bindings", str(bindings), "--enable-connected-ui"]) == 7
     assert calls == [((plan.command,), {"cwd": root.resolve(), "env": dict(plan.environment), "shell": False})]
     assert "TEST_ONLY_SECRET" not in capsys.readouterr().out
@@ -129,7 +129,7 @@ def test_main_failures_never_launch(launch_sources, monkeypatch, capsys):
     def reject(*args, **kwargs):
         raise serve_connected.ConnectedLaunchError("Prerequisite unavailable.")
     monkeypatch.setattr(serve_connected, "build_launch", reject)
-    monkeypatch.setattr(serve_connected.subprocess, "call", lambda *args, **kwargs: pytest.fail("must not launch"))
+    monkeypatch.setattr(serve_connected, "run_foreground", lambda *args, **kwargs: pytest.fail("must not launch"))
     assert serve_connected.main(["--runtime-bindings", str(bindings), "--enable-connected-ui"]) == 2
     assert "NOT STARTED" in capsys.readouterr().err
 
@@ -141,7 +141,7 @@ def test_foreground_launch_failure_and_interrupt_are_sanitized(launch_sources, m
     monkeypatch.setattr(serve_connected, "build_launch", lambda *args, **kwargs: plan)
     def fail(*args, **kwargs):
         raise error
-    monkeypatch.setattr(serve_connected.subprocess, "call", fail)
+    monkeypatch.setattr(serve_connected, "run_foreground", fail)
     assert serve_connected.main(["--runtime-bindings", str(bindings), "--enable-connected-ui"]) == exit_code
     assert "TEST_ONLY_PRIVATE_ERROR" not in capsys.readouterr().err
 
@@ -165,7 +165,7 @@ def test_offline_launcher_still_removes_connected_optin(monkeypatch):
     monkeypatch.setenv("STARK_ENABLE_CONNECTED_UI", "1")
     monkeypatch.setattr(sys, "argv", ["ops.serve"])
     calls = []
-    monkeypatch.setattr(serve.subprocess, "call", lambda *args, **kwargs: calls.append((args, kwargs)) or 0)
+    monkeypatch.setattr(serve, "run_foreground", lambda *args, **kwargs: calls.append((args, kwargs)) or 0)
     assert serve.main() == 0
     assert "STARK_ENABLE_CONNECTED_UI" not in calls[0][1]["env"]
     assert "--server.address=127.0.0.1" in calls[0][0][0]

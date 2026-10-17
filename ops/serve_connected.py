@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from .serve import run_foreground
 from typing import Mapping, Sequence
 
 
@@ -162,7 +163,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         # Inherit foreground console, standard streams and Ctrl+C behavior.
         # No shell, detached process, service, browser, model or database setup.
-        return subprocess.call(plan.command, cwd=plan.root, env=dict(plan.environment), shell=False)
+        return run_foreground(plan.command, cwd=plan.root, env=dict(plan.environment), shell=False)
     except KeyboardInterrupt:
         return 130
     except OSError:
