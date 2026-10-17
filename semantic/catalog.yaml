@@ -2,7 +2,7 @@
 # No seed records, held-out questions, reference queries or numeric answers.
 # Physical names follow the current schema.sql, not a missing historical schema.
 # Definitions require future human review and independent reference evaluation.
-version: "1.0"
+version: "1.1"
 entities:
   employee:
     name: Employee
@@ -127,7 +127,7 @@ metrics:
     null_handling: Employee identifiers are required.
     units: rows
     temporal_rule_ids: []
-    allowed_scopes: [direct_reports]
+    allowed_scopes: [all, assigned_divisions, direct_reports]
     dependencies: []
     pending_roles: []
   posted_closed_payroll_run_count:
@@ -143,6 +143,74 @@ metrics:
     aggregation: count_distinct
     null_handling: Run identifiers, statuses and payment dates are required.
     units: runs
+    temporal_rule_ids: [pay_date_as_of]
+    allowed_scopes: [all]
+    dependencies: []
+    pending_roles: []
+  gross_pay:
+    name: Gross pay
+    description: Signed USD gross pay for one employee payroll result in a posted or closed run paid on or before the explicit date; no implicit aggregation or substitution of header totals.
+    aliases: [gross pay, gross payroll amount]
+    expression: payroll_results.gross_pay
+    grain: [payroll_results.payroll_result_id]
+    source_tables: [payroll_runs, payroll_results]
+    source_columns: [payroll_runs.payroll_run_id, payroll_runs.status, payroll_runs.pay_date, payroll_results.payroll_result_id, payroll_results.payroll_run_id, payroll_results.gross_pay]
+    relationship_ids: [result_run]
+    filters: ["payroll_runs.status IN ('posted', 'closed')"]
+    aggregation: none
+    null_handling: Gross pay is NOT NULL in the schema; a missing payroll result remains absent, never an inferred zero. Signed corrections remain meaningful. Non-posted/non-closed runs are excluded.
+    units: USD
+    temporal_rule_ids: [pay_date_as_of]
+    allowed_scopes: [all]
+    dependencies: []
+    pending_roles: []
+  net_pay:
+    name: Net pay
+    description: Signed USD net pay for one employee payroll result in a posted or closed run paid on or before the explicit date; no implicit aggregation or substitution of header totals.
+    aliases: [net pay, net payroll amount]
+    expression: payroll_results.net_pay
+    grain: [payroll_results.payroll_result_id]
+    source_tables: [payroll_runs, payroll_results]
+    source_columns: [payroll_runs.payroll_run_id, payroll_runs.status, payroll_runs.pay_date, payroll_results.payroll_result_id, payroll_results.payroll_run_id, payroll_results.net_pay]
+    relationship_ids: [result_run]
+    filters: ["payroll_runs.status IN ('posted', 'closed')"]
+    aggregation: none
+    null_handling: Net pay is NOT NULL in the schema; a missing result remains absent. Zero and negative net pay are valid, including corrections and garnishments; never clamp them to zero.
+    units: USD
+    temporal_rule_ids: [pay_date_as_of]
+    allowed_scopes: [all]
+    dependencies: []
+    pending_roles: []
+  total_earnings_amount:
+    name: Total earnings amount
+    description: USD earning-line total per posted or closed run paid on or before the explicit date. Aggregate earning lines independently before combining with deduction totals to avoid fan-out. Preserve qualifying runs with no lines using an outer join; do not substitute header totals.
+    aliases: [total earnings, total earnings amount, earnings amount]
+    expression: "COALESCE(SUM(payroll_earnings.amount), 0)"
+    grain: [payroll_runs.payroll_run_id]
+    source_tables: [payroll_runs, payroll_results, payroll_earnings]
+    source_columns: [payroll_runs.payroll_run_id, payroll_runs.status, payroll_runs.pay_date, payroll_results.payroll_result_id, payroll_results.payroll_run_id, payroll_earnings.payroll_result_id, payroll_earnings.amount]
+    relationship_ids: [result_run, earning_result]
+    filters: ["payroll_runs.status IN ('posted', 'closed')"]
+    aggregation: sum
+    null_handling: Line amounts are NOT NULL in the schema. SUM ignores NULL outer-join values; COALESCE returns zero for an existing qualifying run with no earning lines. A nonexistent run remains absent; signed corrections are retained.
+    units: USD
+    temporal_rule_ids: [pay_date_as_of]
+    allowed_scopes: [all]
+    dependencies: []
+    pending_roles: []
+  total_deductions_amount:
+    name: Total deductions amount
+    description: USD deduction-line total per posted or closed run paid on or before the explicit date. Aggregate deduction lines independently before combining with earning totals to avoid fan-out. Preserve qualifying runs with no lines using an outer join; do not substitute header or result totals.
+    aliases: [total deductions, total deductions amount, deductions amount]
+    expression: "COALESCE(SUM(payroll_deductions.amount), 0)"
+    grain: [payroll_runs.payroll_run_id]
+    source_tables: [payroll_runs, payroll_results, payroll_deductions]
+    source_columns: [payroll_runs.payroll_run_id, payroll_runs.status, payroll_runs.pay_date, payroll_results.payroll_result_id, payroll_results.payroll_run_id, payroll_deductions.payroll_result_id, payroll_deductions.amount]
+    relationship_ids: [result_run, deduction_result]
+    filters: ["payroll_runs.status IN ('posted', 'closed')"]
+    aggregation: sum
+    null_handling: Line amounts are NOT NULL in the schema. SUM ignores NULL outer-join values; COALESCE returns zero for an existing qualifying run with no deduction lines. A nonexistent run remains absent; signed corrections are retained.
+    units: USD
     temporal_rule_ids: [pay_date_as_of]
     allowed_scopes: [all]
     dependencies: []
@@ -250,7 +318,7 @@ temporal_rules:
     predicate: "leave_balances.as_of_date <= CAST(:as_of_date AS DATE)"
     selection: Choose MAX(as_of_date) per employee_id and leave_type among qualifying snapshots before projecting balance_hours; summing history is invalid.
 ambiguities:
-  - {term: headcount, targets: [active_headcount, visible_employee_count]}
+  - {term: headcount, targets: [active_headcount, visible_employee_count, direct_report_count]}
   - {term: payroll date, targets: [payroll_pay_date, payroll_period_end]}
   - {term: payroll timing, targets: [payroll_pay_date, payroll_period_end]}
   - {term: organizational unit, targets: [division, department]}

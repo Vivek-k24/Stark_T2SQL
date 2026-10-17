@@ -1,10 +1,11 @@
-"""Draft fail-closed FR-5 PostgreSQL SELECT-family review, without execution.
+"""Fail-closed FR-5 PostgreSQL SELECT-family review, without execution.
 
 Acceptance is conditional on an externally supplied human review profile for
 the actual sqlglot release, exact AST layouts, and individually reviewed
 function rules. This source is neither that evidence nor acceptance A/B/C.
-The user's NFR-6 exception permits drafting only. No parser is imported or
-candidate reviewed on module import, and no database client is used here.
+R05 tests supply a separate, explicitly test-only empirical profile; that is
+not production human approval. No parser is imported or candidate reviewed on
+module import, and no database client is used here.
 
 The admitted grammar describes SELECT/CTE/set queries, boolean operators,
 CASE/EXISTS/IN, scalar literals, aliases, CAST/EXTRACT, explicit aggregates,
@@ -42,7 +43,7 @@ from .function_policy import (
 )
 
 
-VALIDATOR_REVISION = "fr5-validator-draft-2"
+VALIDATOR_REVISION = "fr5-validator-r05-1"
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,62}")
 
 
@@ -105,7 +106,7 @@ _SHAPES: tuple[NodeShape, ...] = (
     NodeShape("TableAlias", frozenset({"this", "columns"})),
     NodeShape("From", frozenset({"this", "expressions"})),
     NodeShape("Join", frozenset({"this", "on", "using", "kind", "side"}), frozenset({"kind", "side"})),
-    NodeShape("Subquery", frozenset({"this", "alias"})),
+    NodeShape("Subquery", frozenset({"this", "alias", "order", "limit", "offset", "with", "with_"})),
     NodeShape("Alias", frozenset({"this", "alias"})),
     NodeShape("Column", frozenset({"this", "table", "db", "catalog"})),
     NodeShape("Identifier", frozenset({"this", "quoted"}), frozenset({"this", "quoted"})),
@@ -121,7 +122,7 @@ _SHAPES: tuple[NodeShape, ...] = (
     NodeShape("Ordered", frozenset({"this", "desc", "nulls_first"}), frozenset({"desc", "nulls_first"})),
     NodeShape("Limit", frozenset({"expression"})),
     NodeShape("Offset", frozenset({"expression"})),
-    NodeShape("Distinct", frozenset({"expressions", "on"})),
+    NodeShape("Distinct", frozenset({"this", "expressions", "on"})),
     NodeShape("Paren", frozenset({"this"})),
     NodeShape("Tuple", frozenset({"expressions"})),
     NodeShape("And", frozenset({"this", "expression"})),
@@ -133,11 +134,11 @@ _SHAPES: tuple[NodeShape, ...] = (
     NodeShape("GTE", frozenset({"this", "expression"})),
     NodeShape("LT", frozenset({"this", "expression"})),
     NodeShape("LTE", frozenset({"this", "expression"})),
-    NodeShape("Is", frozenset({"this", "expression"})),
+    NodeShape("Is", frozenset({"this", "expression", "negate"}), frozenset({"negate"})),
     NodeShape("Between", frozenset({"this", "low", "high"})),
     NodeShape("In", frozenset({"this", "expressions", "query"})),
-    NodeShape("Like", frozenset({"this", "expression"})),
-    NodeShape("ILike", frozenset({"this", "expression"})),
+    NodeShape("Like", frozenset({"this", "expression", "negate"}), frozenset({"negate"})),
+    NodeShape("ILike", frozenset({"this", "expression", "negate"}), frozenset({"negate"})),
     NodeShape("Escape", frozenset({"this", "expression"})),
     NodeShape("Add", frozenset({"this", "expression"})),
     NodeShape("Sub", frozenset({"this", "expression"})),
@@ -172,8 +173,10 @@ class ParserReviewApproval:
     """External review metadata, supplied only by trusted future composition.
 
     Construction records evidence supplied by the caller, never produces it.
-    review_reference identifies actual human review and per-signature positive
-    and negative contracts. Pinning/version drift causes fail-closed rejection.
+    Production review_reference must identify actual human review and positive
+    and negative contracts. R05 pytest fixtures separately identify their
+    empirical TEST-ONLY scope, without claiming that human approval.
+    Pinning/version drift causes fail-closed rejection.
     No default approval object or fabricated reference is present in source.
     """
 
@@ -306,7 +309,12 @@ class _ASTReview:
             raise _Rejected(ValidationRuleCode.STRUCTURE, "An object name is not a reviewed Identifier node.")
         text = node.args.get("this")
         quoted = node.args.get("quoted", False)
-        if not isinstance(text, str) or _IDENTIFIER.fullmatch(text) is None or type(quoted) is not bool:
+        if not isinstance(text, str) or type(quoted) is not bool:
+            raise _Rejected(ValidationRuleCode.STRUCTURE, "Unsupported identifier representation.")
+        parent_name = type(getattr(node, "parent", None)).__name__
+        if quoted and parent_name == "Alias" and 1 <= len(text) <= 63 and all(ch.isprintable() and ch not in "\x00\r\n" for ch in text):
+            return text
+        if _IDENTIFIER.fullmatch(text) is None:
             raise _Rejected(ValidationRuleCode.STRUCTURE, "Unsupported identifier representation.")
         return text if quoted else text.lower()
 
@@ -351,7 +359,7 @@ class _ASTReview:
             if not relations or any(not self._is(item, "Table") and not self._is(item, "Subquery") for item in relations):
                 raise _Rejected(ValidationRuleCode.TABLE_FUNCTION, "FROM/JOIN admits only physical/CTE tables and SELECT subqueries.")
         if name == "Join":
-            if args.get("kind") not in {None, "", "INNER", "CROSS"} or args.get("side") not in {None, "", "LEFT", "RIGHT", "FULL"}:
+            if args.get("kind") not in {None, "", "INNER", "OUTER", "CROSS"} or args.get("side") not in {None, "", "LEFT", "RIGHT", "FULL"}:
                 raise _Rejected(ValidationRuleCode.STRUCTURE, "Unreviewed JOIN kind or side.")
         if name == "Identifier":
             self._identifier(node)
@@ -364,6 +372,8 @@ class _ASTReview:
                 raise _Rejected(ValidationRuleCode.STRUCTURE, "Unreviewed literal representation.")
         if name == "Boolean" and type(args.get("this")) is not bool:
             raise _Rejected(ValidationRuleCode.STRUCTURE, "Unreviewed boolean representation.")
+        if name in {"Is", "Like", "ILike"} and "negate" in args and type(args["negate"]) is not bool:
+            raise _Rejected(ValidationRuleCode.STRUCTURE, "A negated operator requires exact boolean metadata.")
         if name in {"Union", "Intersect", "Except", "CTE", "Ordered", "DataType"}:
             for key in {"distinct", "materialized", "desc", "nulls_first", "nested"} & args.keys():
                 if args[key] is not None and type(args[key]) is not bool:
@@ -454,6 +464,12 @@ class _ASTReview:
             if isinstance(node, self.denied_classes):
                 raise _Rejected(ValidationRuleCode.EXECUTABLE_STATEMENT, f"Executable statement/locking node is forbidden: {type(node).__name__}.")
             shape = self.shapes.get(type(node))
+            # Presence matters even for False/None: these metadata fields may
+            # occur only on the exact parser layouts reviewed for R05.
+            if "big_int" in node.args and type(node) is not getattr(self.exp, "Count", None):
+                raise _Rejected(ValidationRuleCode.UNSUPPORTED_ARGUMENT, "COUNT metadata appears on another AST class.")
+            if "negate" in node.args and (shape is None or shape.parser_class not in {"Is", "Like", "ILike"}):
+                raise _Rejected(ValidationRuleCode.UNSUPPORTED_ARGUMENT, "Negation metadata appears on an unreviewed operator class.")
             if shape is not None:
                 args = node.args
                 unknown = {key for key, value in args.items() if _present(value)} - shape.argument_keys
@@ -470,7 +486,10 @@ class _ASTReview:
                     raise _Rejected(ValidationRuleCode.FUNCTION, str(exc)) from exc
                 for key, value in node.args.items():
                     if _present(value) and not isinstance(value, (self.expression_class, list, tuple)):
-                        if not (rule.parser_class == "Anonymous" and key == "this" and isinstance(value, str)):
+                        if not (
+                            (rule.parser_class == "Anonymous" and key == "this" and isinstance(value, str))
+                            or (rule.parser_class == "Count" and rule.sql_name == "count" and key == "big_int" and type(value) is bool)
+                        ):
                             raise _Rejected(ValidationRuleCode.FUNCTION, "A callable argument has unreviewed scalar content.")
             else:
                 raise _Rejected(ValidationRuleCode.UNSUPPORTED_NODE, f"Unreviewed AST class: {type(node).__name__}.")
@@ -637,7 +656,7 @@ class ReviewedSQLValidator:
 class HarnessSafetyReviewer:
     """Mandatory independent safety gate; it grants no connection capability.
 
-    UNCONTROLLED relaxes only role table visibility to the known fixture table
+    NO_VALIDATOR and UNCONTROLLED relax role table visibility to the known fixture table
     set. The same parser/AST/function/schema review still applies, with no
     privileged/catalog/UDF/unsafe-statement fallback. Other harness modes keep
     persona table rules, including FULL clone evaluations that also require the
@@ -657,7 +676,7 @@ class HarnessSafetyReviewer:
             _require_hash(fixture_dump_fingerprint, "Actual fixture dump fingerprint")
             if not isinstance(clone_token, str) or not clone_token.strip():
                 raise _Rejected(ValidationRuleCode.POLICY_BINDING, "An audited disposable clone token is required.")
-            decision = self._validator._decision(candidate_sql, persona=persona, policy_fingerprint=policy_fingerprint, allow_all_fixture_tables=mode is ExecutionMode.UNCONTROLLED)
+            decision = self._validator._decision(candidate_sql, persona=persona, policy_fingerprint=policy_fingerprint, allow_all_fixture_tables=mode in {ExecutionMode.UNCONTROLLED, ExecutionMode.NO_VALIDATOR})
             if not decision.accepted or decision.regenerated_sql is None:
                 raise _Rejected(decision.rule_code, decision.internal_detail)
             return HarnessSelectReview(

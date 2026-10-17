@@ -15,15 +15,17 @@ def grant_statements(
     schema_columns: Mapping[str, tuple[str, ...]],
     *,
     definer_owner: str,
+    baseline_eval_login: str | None = None,
 ) -> tuple[str, ...]:
     """Remove stale table AND column ACLs before granting the exact entitlement.
 
     The dynamic column revoke also clears existing unexpected relations in the
     controlled application schema. PostgreSQL table revocation alone does not
-    remove column ACLs. No runtime login receives direct application privileges.
+    remove column ACLs. Business logins receive no direct application privileges;
+    only an explicitly supplied evaluation-clone baseline gets full SELECT.
     """
     principals = "PUBLIC, " + ", ".join(
-        quote_identifier(name) for name in managed_role_names(matrix, definer_owner)
+        quote_identifier(name) for name in managed_role_names(matrix, definer_owner, baseline_eval_login)
     )
     schema = quote_identifier(matrix.schema)
     statements = [
@@ -73,4 +75,8 @@ $stark_column_revokes$;""",
         f"{qualified_name(matrix.schema, 'hr_bp_assignments')} "
         f"TO {quote_identifier(definer_owner)};"
     )
+    if baseline_eval_login is not None:
+        eval_target = quote_identifier(baseline_eval_login)
+        for table in matrix.tables:
+            statements.append(f"GRANT SELECT ON TABLE {qualified_name(matrix.schema, table)} TO {eval_target};")
     return tuple(statements)

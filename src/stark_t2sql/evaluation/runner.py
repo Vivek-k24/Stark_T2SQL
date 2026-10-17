@@ -27,9 +27,9 @@ from .failure_classes import ManualTriage, classify_failure
 from .holdout import CasePartition, FrozenCaseIndex, FrozenCaseMetadata, HoldoutAuthority, HoldoutPermit, read_tuning_payload
 from .records import (
     CaseRunRecord, EvaluationRecordWriter, RunFingerprints, RunRecord, RunSettings,
-    UnavailableInput, WarmupRecord, case_record,
+    UnavailableInput, WarmupRecord, case_record, validate_case_accounting,
 )
-from .reference import FixtureCanaryProvider, ReferenceAuthority, ReferenceResult
+from .reference import FixtureCanaryProvider, ReferenceAuthority, ReferenceResult, physical_reference_tables
 from .wallclock import WallClockReview, lint_wallclock
 
 
@@ -151,13 +151,83 @@ class RunSummary:
     source_limits: tuple[str, ...]
     unsubmitted_case_ids: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        for name in ("observations", "records", "unavailable_inputs", "source_limits", "unsubmitted_case_ids"):
+            object.__setattr__(self, name, tuple(getattr(self, name)))
+        observed = tuple(row.case_id for row in self.observations)
+        if len(set(observed)) != len(observed) or len(set(self.unsubmitted_case_ids)) != len(self.unsubmitted_case_ids) or set(observed) & set(self.unsubmitted_case_ids):
+            raise ConfigurationError("Case accounting cannot duplicate or resubmit an observed case.")
+        if self.histogram != accuracy_histogram(self.observations) or tuple(record.case_id for record in self.records) != observed:
+            raise ConfigurationError("Run summary must describe its actual observations and case records.")
+        if any(row.triage_pending and row.passed is not False for row in self.observations):
+            raise ConfigurationError("Pending triage belongs only to failed scored cases.")
+        validate_case_accounting(self.accounting)
+        if self.complete and (self.pending_cases or self.pending_triage_cases or self.unavailable_inputs):
+            raise ConfigurationError("An incomplete or pending run cannot claim completion.")
+
+    @property
+    def total_cases(self) -> int:
+        return len(self.observations) + self.unsubmitted_cases
+
     @property
     def scored_cases(self) -> int:
         return self.histogram.scored
 
     @property
     def pending_cases(self) -> int:
-        return self.histogram.unscored + self.histogram.pending_triage_count + len(self.unsubmitted_case_ids)
+        return self.unscored_cases + self.unsubmitted_cases
+
+    @property
+    def unscored_cases(self) -> int:
+        return self.histogram.unscored
+
+    @property
+    def pending_triage_cases(self) -> int:
+        return self.histogram.pending_triage_count
+
+    @property
+    def unsubmitted_cases(self) -> int:
+        return len(self.unsubmitted_case_ids)
+
+    @property
+    def accounting(self) -> dict[str, int]:
+        return {name: getattr(self, name) for name in (
+            "total_cases", "scored_cases", "unscored_cases", "pending_triage_cases", "unsubmitted_cases", "pending_cases",
+        )}
+
+
+def _candidate_matches_reference(candidate: str | None, reference: ReferenceResult, matrix) -> bool:
+    """Only outer whitespace and ONE terminal semicolon may vary.
+
+    A real available, legitimate reference and its unchanged executed-SQL hash
+    remain necessary. Strict relation parsing rejects multi/empty statements
+    and malformed or write-bearing SQL even when a test supplies a matching
+    hash. This creates no parser or reference approval and executes no SQL.
+    """
+    if reference.available is not True or reference.proves_legitimate is not True or reference.table is None or not isinstance(candidate, str):
+        return False
+    try:
+        physical_reference_tables(candidate, matrix)
+        import sqlglot
+        from sqlglot.tokens import TokenType
+
+        trimmed = candidate.strip()
+        tokens = sqlglot.tokenize(trimmed, read="postgres")
+        terminators = [token for token in tokens if token.token_type is TokenType.SEMICOLON]
+        if len(terminators) > 1:
+            return False
+        variants = {candidate, trimmed}
+        if terminators:
+            if tokens[-1] is terminators[0] and terminators[0].end == len(trimmed) - 1:
+                stem = trimmed[:-1].rstrip()
+                variants.update((stem, stem + ";"))
+        else:
+            appended = sqlglot.tokenize(trimmed + ";", read="postgres")
+            if appended and appended[-1].token_type is TokenType.SEMICOLON and appended[-1].end == len(trimmed):
+                variants.add(trimmed + ";")
+    except Exception:
+        return False
+    return any(sha256_context(text) == reference.table.sql_sha256 for text in variants)
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,7 +287,8 @@ def collect_run_metadata(
         model_hash = runtime.client.service.model_sha256
         launcher_hash = runtime.client.service.launcher_sha256
         template_hash = runtime.template.sha256
-        semantic_hash = runtime.catalog.sha256
+        catalog = getattr(runtime, "catalog", None)
+        semantic_hash = catalog.sha256 if catalog is not None else None
         measurement_hash = runtime.client.measurement_sha256
         build = runtime.client.service.llama_cpp_build
     else:
@@ -317,7 +388,7 @@ class EvaluationRunner:
             actual.update({
                 "model_gguf_sha256": runtime.client.service.model_sha256,
                 "prompt_template_sha256": runtime.template.sha256,
-                "semantic_catalog_sha256": runtime.catalog.sha256,
+                "semantic_catalog_sha256": getattr(runtime, "catalog", None).sha256 if getattr(runtime, "catalog", None) is not None else None,
                 "resource_measurements_sha256": runtime.client.measurement_sha256,
                 "llama_launcher_sha256": runtime.client.service.launcher_sha256,
             })
@@ -400,8 +471,8 @@ class EvaluationRunner:
                     histogram = accuracy_histogram(())
                     unsubmitted = tuple(loaded.case.id for loaded in cases)
                     summary = RunSummary(plan.run_id, plan.mode, plan.partition, (), histogram, (), False, tuple(unavailable), ("Warmup unavailable; scoring did not begin.",), unsubmitted)
-                    writer.write_summary({"accuracy": asdict(histogram), "complete": False, "unavailable_inputs": [asdict(item) for item in unavailable], "unsubmitted_case_ids": unsubmitted})
-                    writer.append_project_log(aborted, scored_cases=0, pending_cases=len(unsubmitted))
+                    writer.write_summary({"accuracy": asdict(histogram), "accounting": summary.accounting, "complete": False, "unavailable_inputs": [asdict(item) for item in unavailable], "unsubmitted_case_ids": unsubmitted})
+                    writer.append_project_log(aborted, scored_cases=summary.scored_cases, pending_cases=summary.pending_cases, accounting=summary.accounting)
                     return summary
             else:
                 warmup_record = WarmupRecord(False, unavailable_reason="Not applicable: deterministic direct-SQL run has no model request.")
@@ -420,12 +491,15 @@ class EvaluationRunner:
             observations, records = [], []
             reviews = {entry.case_id: entry.approval for entry in plan.column_reviews if entry.mode is plan.mode}
             expectations, triage = dict(plan.canonical_expectations), dict(plan.triage_entries)
-            for loaded in cases:
+            unsubmitted = ()
+            for case_index, loaded in enumerate(cases):
                 case = loaded.case
                 if plan.partition is CasePartition.HOLDOUT:
                     plan.holdout_authority._permit(plan.holdout_permit)
                 if cancel_event is not None and cancel_event.is_set():
-                    raise ConfigurationError("Evaluation was cancelled; subsequent cases were not submitted.")
+                    unsubmitted = tuple(remaining.case.id for remaining in cases[case_index:])
+                    unavailable.append(UnavailableInput("cancellation", "Evaluation was cancelled; remaining cases were not submitted."))
+                    break
                 # Compute the frozen human reference BEFORE candidate inference,
                 # so model output can never become administrative reference SQL.
                 reference = (
@@ -447,19 +521,15 @@ class EvaluationRunner:
                     )
                 except (TypeError, ValueError, ArithmeticError):
                     assessment = CaseAssessment(None, "Typed scalar/projection comparison capability is unavailable.")
-                if computed_canaries is not None and not computed_canaries.available:
-                    assessment = replace(assessment, passed=None, reason=computed_canaries.reason, canary_check_available=False, leak_found=False)
+                if computed_canaries is not None and not computed_canaries.available and not assessment.leak_found:
+                    assessment = replace(assessment, passed=None, reason=computed_canaries.reason, canary_check_available=False)
                 # An oracle for a legitimate intent does not prove that a
                 # different generated SQL statement is legitimate. Exact
                 # independently executed reference bytes supply that proof;
                 # other projections remain eligible for explicitly pending
                 # human triage rather than a fabricated validator defect.
                 actual_candidate = outcome.regenerated_sql or outcome.extracted_sql
-                candidate_proved = (
-                    reference.available and reference.table is not None
-                    and actual_candidate is not None
-                    and sha256_context(actual_candidate) == reference.table.sql_sha256
-                )
+                candidate_proved = _candidate_matches_reference(actual_candidate, reference, self.harness._runtime.matrix)
                 assessment = replace(assessment, reference_proves_legitimate=candidate_proved)
                 if case.expected_outcome in {ExpectedOutcome.MATCH_REFERENCE, ExpectedOutcome.SCOPED_RESULT, ExpectedOutcome.CANONICAL_RESOLUTION} and not reference.available:
                     # Keep independently observable extraction/DB syntax failures,
@@ -476,11 +546,12 @@ class EvaluationRunner:
                         assessment = replace(assessment, passed=False, reason="Prohibited wall-clock AST use was observed.")
                 if case.expected_outcome is ExpectedOutcome.CANONICAL_RESOLUTION and assessment.passed is True:
                     expected_id = expectations.get(case.id)
-                    if not self.harness.model_available or expected_id is None or case.question is None:
+                    runtime = self.harness._runtime
+                    catalog, snapshot = getattr(runtime, "catalog", None), getattr(runtime, "snapshot", None)
+                    if not self.harness.model_available or expected_id is None or case.question is None or catalog is None or snapshot is None:
                         assessment = replace(assessment, passed=None, reason="Actual canonical-definition expectation is unavailable.")
                     else:
-                        runtime = self.harness._runtime
-                        resolution = resolve_question(case.question, runtime.catalog, runtime.matrix, runtime.snapshot, runtime.personas.resolve(case.persona).business_role)
+                        resolution = resolve_question(case.question, catalog, runtime.matrix, snapshot, runtime.personas.resolve(case.persona).business_role)
                         if resolution.status is not ResolutionStatus.RESOLVED or resolution.concept_ids != (expected_id,):
                             assessment = replace(assessment, passed=False, reason="Observed governed resolution differs from the unique reviewed definition.")
                 classification = classify_failure(outcome, assessment, wallclock=clock, manual_triage=triage.get(case.id))
@@ -506,23 +577,24 @@ class EvaluationRunner:
                 if assessment.passed is None:
                     unavailable.append(UnavailableInput("case:" + case.id, assessment.reason))
             histogram = accuracy_histogram(observations)
-            complete = not unavailable and not histogram.unscored and not histogram.pending_triage_count
+            complete = not unavailable and not histogram.unscored and not histogram.pending_triage_count and not unsubmitted
             limits = (
                 "Prepared hazardous statements/functions/resource attacks remain unexecuted safety stops.",
-                "The existing NO_VALIDATOR safety reviewer retains role-table checks; such stops cannot establish database enforcement.",
+                "NO_VALIDATOR bypasses application table entitlements, retaining mandatory structure safety and the persona's database identity.",
                 "Direct SQL has no prompt context to ablate; through-model candidates may differ across profiles.",
                 "Source-schema bytes do not establish historical fidelity; actual owner fidelity inputs remain separate.",
                 "Recorded model declarations are actual owner inputs, not proof of deployed resource enforcement.",
             )
-            summary = RunSummary(plan.run_id, plan.mode, plan.partition, tuple(observations), histogram, tuple(records), complete, tuple(unavailable), limits)
+            summary = RunSummary(plan.run_id, plan.mode, plan.partition, tuple(observations), histogram, tuple(records), complete, tuple(unavailable), limits, unsubmitted)
             writer.write_summary({
-                "accuracy": asdict(histogram), "leakage": [asdict(item) for item in leakage_by_mode(observations)],
+                "accuracy": asdict(histogram), "accounting": summary.accounting, "leakage": [asdict(item) for item in leakage_by_mode(observations)],
                 "attribution": [asdict(item) for item in attribute_layers(observations)],
                 "changed_cases": [asdict(item) for item in changed_cases(plan.previous_observations, observations)],
                 "complete": complete, "source_limits": limits,
                 "unavailable_inputs": [asdict(item) for item in unavailable],
+                "unsubmitted_case_ids": unsubmitted,
             })
-            writer.append_project_log(run_record, scored_cases=summary.scored_cases, pending_cases=summary.pending_cases)
+            writer.append_project_log(run_record, scored_cases=summary.scored_cases, pending_cases=summary.pending_cases, accounting=summary.accounting)
             return summary
         finally:
             _RUN_FLIGHT.release()

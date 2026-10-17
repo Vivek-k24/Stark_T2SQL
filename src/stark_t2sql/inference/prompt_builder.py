@@ -30,13 +30,27 @@ class BuiltPrompt:
 
 
 def _replace_original_slots(source: str, replacements: tuple[tuple[str, str], ...]) -> str:
-    """Replace original source spans once; inserted question text is never parsed.
+    """Replace every original slot; inserted question text is never parsed.
 
     str.format, chained str.replace and format_map could treat user braces or
     inserted marker text as new slots. Source span assembly preserves all actual
     model-card bytes outside the reviewed substitution locations.
     """
-    spans = sorted((source.index(marker), marker, value) for marker, value in replacements)
+    spans: list[tuple[int, str, str]] = []
+    seen: set[str] = set()
+    for marker, value in replacements:
+        if not isinstance(marker, str) or not marker or not isinstance(value, str) or marker in seen:
+            raise ConfigurationError("Template replacements require distinct nonempty markers and text values.")
+        seen.add(marker)
+        start = source.find(marker)
+        if start == -1:
+            raise ConfigurationError("A reviewed replacement marker is missing from the original template.")
+        while start != -1:
+            spans.append((start, marker, value))
+            # Include overlapping original matches so the assembly guard can
+            # reject them rather than silently choosing one interpretation.
+            start = source.find(marker, start + 1)
+    spans.sort(key=lambda span: span[0])
     pieces: list[str] = []
     position = 0
     for start, marker, value in spans:

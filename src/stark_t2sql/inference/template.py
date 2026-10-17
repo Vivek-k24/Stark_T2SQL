@@ -1,9 +1,8 @@
-"""Read an actual verbatim local model-card template without inventing one.
+"""Load immutable local SQLCoder-7B-2 bytes against actual owner bindings.
 
-The authoritative SQLCoder-7B-2 model-card source is unavailable in this source
-assignment. The future owner must copy its exact bytes locally and supply the
-reviewed placeholder/tag bindings and frozen digest. Those bindings deliberately
-have no guessed defaults. Missing input stops before prompt/model work.
+R01 supports the official model card's two QUESTION regions and one schema
+slot. The owner's provenance record and canonical as-of prefix still have no
+defaults. Loading never fetches a template or contacts a model/database.
 """
 
 from __future__ import annotations
@@ -54,6 +53,11 @@ class ReviewedTemplateContract:
             raise ConfigurationError("Reviewed template markers must be distinct.")
         if any(first in second for first in markers for second in markers if first != second):
             raise ConfigurationError("Reviewed template markers may not overlap.")
+        if markers != (
+            "{user_question}", "{table_metadata_string_DDL_statements}",
+            "[QUESTION]", "[/QUESTION]",
+        ):
+            raise ConfigurationError("The contract contains unreviewed SQLCoder-7B-2 template markers.")
         if (
             not isinstance(self.as_of_line_prefix, str) or not self.as_of_line_prefix
             or "\n" in self.as_of_line_prefix or "\r" in self.as_of_line_prefix
@@ -84,22 +88,57 @@ class PromptTemplate:
             source = self.source_bytes.decode("utf-8", errors="strict")
         except UnicodeDecodeError as exc:
             raise SourceReadError("The model-card template must be strict UTF-8 source.") from exc
-        for marker in (
-            self.contract.question_placeholder, self.contract.schema_placeholder,
-            self.contract.question_open_tag, self.contract.question_close_tag,
-        ):
-            if source.count(marker) != 1:
-                raise ConfigurationError("The actual template must contain each reviewed marker exactly once.")
-        opening = source.index(self.contract.question_open_tag)
-        question = source.index(self.contract.question_placeholder)
-        closing = source.index(self.contract.question_close_tag)
-        if not opening + len(self.contract.question_open_tag) <= question < closing:
-            raise ConfigurationError("The reviewed question slot must be inside the single QUESTION tag pair.")
-        if source[question + len(self.contract.question_placeholder):closing].strip():
-            raise ConfigurationError("Only original whitespace may follow the question slot before its closing tag.")
-        schema = source.index(self.contract.schema_placeholder)
-        if opening <= schema < closing:
-            raise ConfigurationError("The schema slot must be outside the QUESTION tags.")
+        if source.startswith("\ufeff") or "\r" in source:
+            raise ConfigurationError("The model-card source must use UTF-8 without BOM and LF line endings.")
+
+        question_marker = self.contract.question_placeholder
+        schema_marker = self.contract.schema_placeholder
+        opening_marker = self.contract.question_open_tag
+        closing_marker = self.contract.question_close_tag
+        expected_counts = (
+            (question_marker, 2), (opening_marker, 2), (closing_marker, 2),
+            (schema_marker, 1), ("[SQL]", 1),
+        )
+        for marker, count in expected_counts:
+            if source.count(marker) != count:
+                raise ConfigurationError("The template requires two QUESTION pairs/slots, one schema slot and one SQL marker.")
+
+        # Consume only original marker spans. A single active region rejects
+        # nesting, reversed pairs and crossing pairs before any substitution.
+        pattern = "|".join(re.escape(marker) for marker, _ in expected_counts)
+        active_opening: int | None = None
+        active_question: int | None = None
+        regions = 0
+        for match in re.finditer(pattern, source):
+            marker = match.group()
+            if marker == opening_marker:
+                if active_opening is not None:
+                    raise ConfigurationError("QUESTION tag pairs may not overlap or nest.")
+                active_opening, active_question = match.end(), None
+            elif marker == question_marker:
+                if active_opening is None or active_question is not None:
+                    raise ConfigurationError("Each QUESTION region requires exactly one original question slot.")
+                if source[active_opening:match.start()].strip():
+                    raise ConfigurationError("Only original whitespace may precede the question slot inside its tags.")
+                active_question = match.end()
+            elif marker == closing_marker:
+                if active_opening is None or active_question is None:
+                    raise ConfigurationError("QUESTION opening, slot and closing markers must be correctly paired.")
+                if source[active_question:match.start()].strip():
+                    raise ConfigurationError("Only original whitespace may follow the question slot before its closing tag.")
+                regions += 1
+                active_opening = active_question = None
+            elif marker == schema_marker and active_opening is not None:
+                raise ConfigurationError("The schema slot must be outside both QUESTION regions.")
+            elif marker == "[SQL]" and (active_opening is not None or regions != 2):
+                raise ConfigurationError("The SQL marker must follow both complete QUESTION regions.")
+        if active_opening is not None or regions != 2:
+            raise ConfigurationError("The template requires two complete non-overlapping QUESTION regions.")
+        remaining = source
+        for marker, _ in expected_counts:
+            remaining = remaining.replace(marker, "")
+        if any(character in remaining for character in "{}[]"):
+            raise ConfigurationError("The template contains malformed or unreviewed marker text.")
 
     @property
     def text(self) -> str:
@@ -108,16 +147,7 @@ class PromptTemplate:
 
     @property
     def newline(self) -> str:
-        """Use the original template's question-region newline convention."""
-        opening = self.text.index(self.contract.question_open_tag)
-        closing = self.text.index(self.contract.question_close_tag)
-        region = self.text[opening:closing]
-        if "\r\n" in region:
-            if "\n" in region.replace("\r\n", "") or "\r" in region.replace("\r\n", ""):
-                raise ConfigurationError("The template QUESTION region has ambiguous newline conventions.")
-            return "\r\n"
-        if "\r" in region:
-            raise ConfigurationError("Unsupported newline convention in the template QUESTION region.")
+        """The byte-preserving model-card contract permits LF only."""
         return "\n"
 
 

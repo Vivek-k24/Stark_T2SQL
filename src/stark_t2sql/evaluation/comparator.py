@@ -61,12 +61,14 @@ Stable slot mappings can explicitly disambiguate duplicate display labels.
         for field_name in ("reference_identities", "candidate_identities", "candidate_to_reference"):
             object.__setattr__(self, field_name, tuple(getattr(self, field_name)))
         size = len(self.reference_identities)
-        if len(self.candidate_identities) != size or len(self.candidate_to_reference) != size:
+        if not size or len(self.candidate_identities) != size or len(self.candidate_to_reference) != size:
             raise ValueError("Approved projection mapping must have exactly matching column counts")
         if any(type(index) is not int for index in self.candidate_to_reference) or set(self.candidate_to_reference) != set(range(size)):
             raise ValueError("Approved projection mapping must be bijective")
         if any(not isinstance(identity, str) or not identity.strip() for identity in self.reference_identities + self.candidate_identities):
             raise ValueError("Projection identities must be nonempty strings")
+        if len(set(self.reference_identities)) != size:
+            raise ValueError("Reference semantic identities must be unique")
         if not isinstance(self.review_reference, str) or not self.review_reference.strip():
             raise ValueError("Actual column-equivalence review evidence is required")
         for digest in (self.candidate_sql_sha256, self.reference_sql_sha256):
@@ -112,21 +114,44 @@ def _mapping(actual: ResultTable, reference: ResultTable, approval: ApprovedColu
     if len(actual.columns) != len(reference.columns):
         raise ValueError("Column count differs")
     actual_ids, reference_ids = observed_identities(actual), observed_identities(reference)
+    if len(set(reference_ids)) != len(reference_ids):
+        raise ValueError("Reference projection identities are ambiguous")
     if approval is not None:
         if type(approval) is not ApprovedColumnMapping:
             raise TypeError("Column equivalence requires a typed reviewed mapping")
         if actual_ids != approval.candidate_identities or reference_ids != approval.reference_identities:
             raise ValueError("Observed projection does not match the approved mapping")
         missing_identities = any(column.canonical_identity is None for column in actual.columns + reference.columns)
-        if missing_identities and (actual.sql_sha256 is None or reference.sql_sha256 is None or approval.candidate_sql_sha256 is None or approval.reference_sql_sha256 is None):
-            raise LookupError("Raw cursor projection mapping requires actual candidate/reference SQL hashes and matching review bindings")
+        if missing_identities and (reference.sql_sha256 is None or approval.reference_sql_sha256 is None):
+            raise LookupError("Raw cursor projection mapping requires reference SQL hashes and matching review bindings")
         if approval.candidate_sql_sha256 is not None and approval.candidate_sql_sha256 != actual.sql_sha256:
             raise ValueError("Candidate SQL differs from the actual reviewed projection")
         if approval.reference_sql_sha256 is not None and approval.reference_sql_sha256 != reference.sql_sha256:
             raise ValueError("Reference SQL differs from the actual reviewed projection")
+        if len(set(actual_ids)) != len(actual_ids) and (not missing_identities or approval.candidate_sql_sha256 is None):
+            raise LookupError("Duplicate cursor labels require an exact reviewed candidate SQL binding")
         return approval.candidate_to_reference
-    if any(column.canonical_identity is None for column in actual.columns + reference.columns):
+    if any(column.canonical_identity is None for column in reference.columns):
         raise LookupError("Actual canonical projection identities or a reviewed column-equivalence mapping are unavailable")
+    if any(column.canonical_identity is None for column in actual.columns):
+        if reference.sql_sha256 is None:
+            raise LookupError("Dynamic cursor comparison requires the reviewed reference SQL binding")
+        labels = tuple(column.name for column in actual.columns)
+        if len(set(labels)) != len(labels):
+            raise LookupError("Duplicate cursor aliases have no unambiguous semantic mapping")
+        mapping = []
+        for column in actual.columns:
+            matches = [index for index, expected in enumerate(reference.columns) if (
+                column.canonical_identity == expected.canonical_identity
+                if column.canonical_identity is not None else
+                column.name in {expected.name, expected.canonical_identity}
+            )]
+            if len(matches) != 1:
+                raise LookupError("Cursor label has unknown or ambiguous reference meaning")
+            mapping.append(matches[0])
+        if len(set(mapping)) != len(mapping):
+            raise ValueError("Observed column correspondence is not bijective")
+        return tuple(mapping)
     if len(set(actual_ids)) != len(actual_ids) or len(set(reference_ids)) != len(reference_ids):
         raise ValueError("Ambiguous duplicate identities require an approved stable projection mapping")
     if set(actual_ids) != set(reference_ids):

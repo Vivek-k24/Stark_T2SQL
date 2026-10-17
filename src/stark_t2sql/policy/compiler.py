@@ -34,6 +34,10 @@ class CompileSettings:
     measurement_provenance identifies it. Supplying fields is not proof of
     measurement quality. The future administrative path owns review of inputs.
     Initial statement timeout comes from FR-6.2, not a guessed resource budget.
+
+    Production MUST leave baseline_eval_login=None. Only an isolated evaluation
+    clone may supply a dedicated baseline login; policy_apply verifies its live
+    clone marker before installing the resulting permissive SELECT policies.
     """
 
     definer_owner: str
@@ -42,9 +46,12 @@ class CompileSettings:
     temp_file_limit_kib: int | None = None
     measurement_sha256: str | None = None
     measurement_provenance: str | None = None
+    baseline_eval_login: str | None = None
 
     def __post_init__(self) -> None:
         quote_identifier(self.definer_owner)
+        if self.baseline_eval_login is not None:
+            quote_identifier(self.baseline_eval_login)
         if type(self.statement_timeout_ms) is not int or not 0 < self.statement_timeout_ms <= 2147483647:
             raise ConfigurationError("statement_timeout_ms must be a positive PostgreSQL int32 value.")
         if self.work_mem_kib is None or self.temp_file_limit_kib is None:
@@ -125,9 +132,10 @@ def compile_policy(
     statements = (
         role_statements(matrix, settings)
         + schema_statements(matrix, settings)
-        + grant_statements(matrix, schema_columns, definer_owner=settings.definer_owner)
-        + scope_function_statements(matrix, definer_owner=settings.definer_owner)
-        + rls_statements(matrix)
+        + grant_statements(matrix, schema_columns, definer_owner=settings.definer_owner, baseline_eval_login=settings.baseline_eval_login)
+        + scope_function_statements(matrix, definer_owner=settings.definer_owner,
+                                    baseline_eval_login=settings.baseline_eval_login)
+        + rls_statements(matrix, baseline_eval_login=settings.baseline_eval_login)
         + login_default_statements(matrix, settings)
         + set_config_statements(matrix, settings)
     )

@@ -1,14 +1,11 @@
-"""Extraction, decoding and unavailable-template source contracts; no model calls."""
+"""Extraction, decoding and missing-template-contract behavior; no model calls."""
 import pytest
-import json
 
 from stark_t2sql.contracts import FailureClass
 from stark_t2sql.errors import GenerationTimeoutError, GenerationTruncatedError, MissingDependencyError, SQLExtractionError
 from stark_t2sql.inference.client import DecodingDefaults, GenerationResult
 from stark_t2sql.inference.extract import extract_sql
 from stark_t2sql.inference.template import load_template
-from stark_t2sql.inference.template import ReviewedTemplateContract
-from .conftest import required_input
 
 
 @pytest.mark.parametrize("raw,expected", (
@@ -42,7 +39,7 @@ def test_token_cap_with_completed_first_semicolon_keeps_complete_candidate():
     assert extract_sql(generation) == "SELECT 1;"
 
 
-def test_frozen_decoding_and_explicit_missing_template(project_root):
+def test_frozen_decoding_and_missing_template_contract(project_root):
     decoding = DecodingDefaults()
     assert decoding.temperature == 0 and decoding.seed == 42 and decoding.max_tokens == 300
     assert decoding.stop == (";",) and decoding.timeout_seconds == 120
@@ -50,16 +47,18 @@ def test_frozen_decoding_and_explicit_missing_template(project_root):
         load_template(project_root / "src" / "inference" / "prompt_template.txt", contract=None)
 
 
-def test_actual_template_as_of_placement_keeps_original_bytes(project_root,governed_catalog,matrix,schema_metadata,payroll_persona,fixture_date):
-    from stark_t2sql.context.builder import build_context
-    from stark_t2sql.contracts import InputRequest
+@pytest.mark.r01_acceptance
+def test_actual_template_as_of_placement_keeps_original_bytes(project_root):
     from stark_t2sql.inference.prompt_builder import build_prompt
-    raw=json.loads(required_input("STARK_TEST_TEMPLATE_CONTRACT_PATH",project_root).read_text(encoding="utf-8"))
-    contract=ReviewedTemplateContract(**raw)
-    template=load_template(project_root/"src"/"inference"/"prompt_template.txt",contract=contract)
-    original=template.source_bytes
-    context=build_context(InputRequest(payroll_persona,"Unit explicit request",fixture_date),schema_metadata,governed_catalog,matrix)
-    prompt=build_prompt(template,context)
-    question_region=prompt.text.split(contract.question_open_tag,1)[1].split(contract.question_close_tag,1)[0]
-    assert "Unit explicit request"+template.newline+contract.as_of_line_prefix+fixture_date.isoformat() in question_region
-    assert template.source_bytes == original and prompt.template_sha256 == template.sha256
+    from .test_prompt_template_exact import prompt_context, require_authoritative_template
+
+    template = require_authoritative_template(project_root)
+    original = template.source_bytes
+    context = prompt_context("Unit explicit request")
+    prompt = build_prompt(template, context)
+    contract = template.contract
+    question_regions = [part.split(contract.question_close_tag, 1)[0] for part in prompt.text.split(contract.question_open_tag)[1:]]
+    expected = context.request.question + template.newline + contract.as_of_line_prefix + context.request.as_of_date.isoformat()
+    assert question_regions == [expected, expected]
+    assert "{user_question}" not in prompt.text and "{table_metadata_string_DDL_statements}" not in prompt.text
+    assert template.source_bytes is original and prompt.template_sha256 == template.sha256

@@ -32,9 +32,6 @@ def _parser() -> argparse.ArgumentParser:
 
 def _project_root(requested: Path | None) -> Path:
     source_root = Path(__file__).resolve().parents[3]
-    authorized_workspace = Path(r"H:\STARK T2SQL").resolve()
-    if source_root != authorized_workspace:
-        raise ValueError("This source entrypoint is restricted to its authorized project workspace")
     root = source_root if requested is None else Path(requested).resolve()
     if root != source_root:
         raise ValueError("The CLI root must equal the source workspace")

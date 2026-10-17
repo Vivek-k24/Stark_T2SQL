@@ -1,0 +1,4 @@
+src/inference/prompt_template.txt text eol=lf
+fixture_pg_dump.sql text eol=lf
+fixture_manifest.json text eol=lf
+seed_data.py text eol=lf

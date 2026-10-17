@@ -11,9 +11,11 @@ No database is opened, query submitted, review created or result stored now.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date
 from hashlib import sha256
+import json
+from pathlib import Path
 from threading import Event, Timer
 from time import monotonic
 import traceback
@@ -25,11 +27,204 @@ from ..db.connections import AdminConnectionSource, EvaluationConnectionSource
 from ..db.executor import EvaluationExecutor
 from ..db.persona import fixture_digest
 from ..errors import ConfigurationError, MissingDependencyError, StatementTimeoutError
+from ..policy.loader import PolicyMatrix, require_identifier
+from ..security.validator import HarnessSafetyReviewer
 from ..utils.fingerprints import sha256_context
 from ..semantic.models import ColumnRef
 from .cases import Case, require_distinctive_canary, require_sha256
 from .comparator import ResultTable, canonical_cell
 from .wallclock import WallClockReview, lint_wallclock
+
+
+_RELATION_PARSER_VERSION = "30.22.0"
+
+
+def _relation_tree(sql: str, matrix: PolicyMatrix):
+    """Bound metadata inspection, not execution or parser approval.
+
+    CTE/derived sources are resolved by the inspected parser's lexical scopes.
+    Unknown relations, qualifications and duplicate source aliases are errors.
+    This does not replace the separately reviewed execution safety gate.
+    """
+    try:
+        import sqlglot
+        from sqlglot import exp
+        from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
+        from sqlglot.optimizer.scope import Scope, traverse_scope
+
+        if sqlglot.__version__ != _RELATION_PARSER_VERSION:
+            raise ValueError("Relation metadata requires SQLGlot 30.22.0.")
+        if type(sql) is not str or not sql.strip() or len(sql.encode("utf-8")) > 131_072:
+            raise ValueError("Missing or oversized relation SQL.")
+        parsed = sqlglot.parse(sql, read="postgres", error_level=sqlglot.errors.ErrorLevel.RAISE)
+        if type(parsed) is not list or len(parsed) != 1 or type(parsed[0]) not in {exp.Select, exp.Union, exp.Intersect, exp.Except}:
+            raise ValueError("Relation metadata needs one SELECT-family statement.")
+        tree = normalize_identifiers(parsed[0], dialect="postgres")
+        nodes = tuple(tree.walk())
+        if len(nodes) > 10_000:
+            raise ValueError("Relation metadata exceeds the AST limit.")
+        if any(isinstance(node, (exp.DML, exp.DDL, exp.Command, exp.Into, exp.Lock)) for node in nodes):
+            raise ValueError("Executable commands are not relation metadata.")
+        if any(isinstance(node, exp.With) and node.args.get("recursive") for node in nodes):
+            raise ValueError("Recursive relation scopes are not reviewed.")
+        scopes = traverse_scope(tree)
+        if not scopes:
+            raise ValueError("No bound query scope is available.")
+        physical, accounted = set(), set()
+        for scope in scopes:
+            for node, source in scope.selected_sources.values():
+                if isinstance(node, exp.Table):
+                    accounted.add(id(node))
+                if type(source) is exp.Table:
+                    if type(source.this) is not exp.Identifier or source.catalog or source.db not in {"", matrix.schema}:
+                        raise ValueError("Unreviewed physical relation identity.")
+                    if source.name not in matrix.tables:
+                        raise ValueError("Unknown physical fixture relation.")
+                    physical.add(source.name)
+                    accounted.add(id(source))
+                elif not isinstance(source, Scope):
+                    raise ValueError("Unbound or table-function relation scope.")
+            if scope.columns and not scope.selected_sources and scope.parent is None:
+                raise ValueError("Unbound root column references.")
+        if any(id(node) not in accounted for node in nodes if isinstance(node, exp.Table)):
+            raise ValueError("A relation was not resolved by a lexical source scope.")
+        return tree, tuple(sorted(physical))
+    except Exception as exc:
+        raise MissingDependencyError("Physical relation scope is unavailable or ambiguous.") from exc
+
+
+def physical_reference_tables(sql: str, matrix: PolicyMatrix) -> tuple[str, ...]:
+    return _relation_tree(sql, matrix)[1]
+
+
+def reference_row_scope(tables: tuple[str, ...], matrix: PolicyMatrix, persona: Persona, mode: ExecutionMode) -> RowScopeKind:
+    """Reduce known physical table scopes without an employees default.
+
+    VIA_EMPLOYEES plus its actual employee scope is one known policy chain.
+    Other conflicting restricted scopes have no truthful single enum value.
+    A verified relation-free SELECT has no row-level restriction to attribute.
+    """
+    if type(mode) is not ExecutionMode or any(table not in matrix.tables for table in tables):
+        raise MissingDependencyError("Unknown table or execution scope.")
+    if mode is ExecutionMode.UNCONTROLLED:
+        return RowScopeKind.ALL
+    role = matrix.role(persona.business_role)
+    if any(table not in role.tables for table in tables):
+        raise MissingDependencyError("A physical reference table is outside persona entitlements.")
+    if any(table not in matrix.rls_tables and role.tables[table].row_scope is not RowScopeKind.ALL for table in tables):
+        raise MissingDependencyError("A non-RLS table declares an unverified restricted scope.")
+    scopes = {role.tables[table].row_scope for table in tables} - {RowScopeKind.ALL}
+    if not scopes:
+        return RowScopeKind.ALL
+    if len(scopes) == 1:
+        return next(iter(scopes))
+    if (
+        set(tables) & {"employees", "leave_balances"} == {"employees", "leave_balances"}
+        and role.tables["leave_balances"].row_scope is RowScopeKind.VIA_EMPLOYEES
+        and scopes == {RowScopeKind.VIA_EMPLOYEES, role.tables["employees"].row_scope}
+        and role.tables["employees"].row_scope in {RowScopeKind.ASSIGNED_DIVISIONS, RowScopeKind.DIRECT_REPORTS}
+    ):
+        return RowScopeKind.VIA_EMPLOYEES
+    raise MissingDependencyError("Referenced tables have conflicting row scopes.")
+
+
+def _reference_columns(sql: str, matrix: PolicyMatrix, snapshot: SchemaSnapshot) -> frozenset[ColumnRef]:
+    """Resolve physical column reads, including stars, filters and join keys.
+
+    Unbound/ambiguous columns fail rather than borrowing identity from values.
+    Metadata analysis rewrites a copy only; its SQL is never executed.
+    """
+    try:
+        from sqlglot import exp
+        from sqlglot.optimizer.qualify import qualify
+        from sqlglot.optimizer.scope import Scope, traverse_scope
+
+        tree, _ = _relation_tree(sql, matrix)
+        schema = {matrix.schema: {table.name: {column.name: column.sql_type for column in table.columns} for table in snapshot.tables}}
+        qualified = qualify(tree, dialect="postgres", db=matrix.schema, schema=schema, allow_partial_qualification=False)
+        result = set()
+        for scope in traverse_scope(qualified):
+            for column in scope.columns:
+                current = scope
+                while current is not None and column.table not in current.sources:
+                    current = current.parent
+                if current is None:
+                    raise ValueError("Unbound physical column.")
+                source = current.sources[column.table]
+                if type(source) is exp.Table:
+                    if column.name not in snapshot.columns_by_table[source.name]:
+                        raise ValueError("Unknown physical column.")
+                    result.add(ColumnRef(source.name, column.name))
+                elif not isinstance(source, Scope):
+                    raise ValueError("Column source is not a reviewed relation.")
+        return frozenset(result)
+    except Exception as exc:
+        raise MissingDependencyError("Reference physical column lineage is unavailable or ambiguous.") from exc
+
+
+def _require_reference_lineage(sql: str, review: ReferenceReview, matrix: PolicyMatrix, snapshot: SchemaSnapshot, persona: Persona) -> None:
+    if set(physical_reference_tables(sql, matrix)) != set(review.data_tables):
+        raise MissingDependencyError("Actual reference relations differ from reviewed data lineage.")
+    actual = _reference_columns(sql, matrix, snapshot)
+    if actual != frozenset(review.data_columns):
+        raise MissingDependencyError("Actual reference column reads differ from reviewed lineage.")
+    for ref in actual:
+        allowed = matrix.permitted_columns(persona.business_role, ref.table, snapshot.columns_by_table[ref.table])
+        if ref.column not in allowed:
+            raise MissingDependencyError("Independent reference data lineage exceeds the role's actual matrix column entitlements.")
+
+
+@dataclass(frozen=True, slots=True)
+class ScopeReviewStore:
+    """Owner-held files pinned by a SEPARATELY approved trusted digest set.
+
+    No digest is inferred from an evidence file, model output, or review string.
+    The owner must approve these bytes out of band after independent predicate
+    review. A record states analysis; its hash pin supplies the trust binding.
+    This is not a signature verifier or proof that a human review occurred.
+    No records, owner approval, or default production store ship with R06.
+    """
+
+    root: Path
+    approved_sha256: frozenset[str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "root", Path(self.root).resolve())
+        if type(self.approved_sha256) is not frozenset or not self.approved_sha256:
+            raise MissingDependencyError("Separately owner-approved scope record hashes are required.")
+        for digest in self.approved_sha256:
+            require_sha256(digest, "Owner-approved scope record")
+
+    def require(self, review: ReferenceReview, matrix: PolicyMatrix) -> None:
+        try:
+            relative = Path(review.scope_review_reference)
+            path = (self.root / relative).resolve()
+            if relative.is_absolute() or not path.is_relative_to(self.root) or not path.is_file():
+                raise ValueError("Scope record must be an existing file within its trusted root.")
+            with path.open("rb") as source:
+                payload = source.read(1_048_577)
+            if len(payload) > 1_048_576 or sha256(payload).hexdigest() not in self.approved_sha256:
+                raise ValueError("Scope evidence bytes lack separate owner approval.")
+
+            def unique_pairs(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("Duplicate scope evidence keys.")
+                    result[key] = value
+                return result
+
+            record = json.loads(payload.decode("utf-8"), object_pairs_hook=unique_pairs)
+            if type(record) is not dict or set(record) != {"kind", "review_binding_sha256", "matrix_sha256", "reviewer", "scope_analysis"}:
+                raise ValueError("Unknown scope evidence format.")
+            if record["kind"] != "OWNER_APPROVED_REFERENCE_SCOPE_V1":
+                raise ValueError("Test-only or unknown evidence cannot authorize references.")
+            if record["review_binding_sha256"] != review.binding_sha256 or record["matrix_sha256"] != matrix.sha256:
+                raise ValueError("Scope evidence belongs to different reference/policy inputs.")
+            if any(type(record[key]) is not str or not record[key].strip() for key in ("reviewer", "scope_analysis")):
+                raise ValueError("Independent reviewer and predicate analysis are unavailable.")
+        except Exception as exc:
+            raise MissingDependencyError("Genuine owner-approved reference scope evidence is unavailable.") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +269,8 @@ class ReferenceReview:
             raise MissingDependencyError("Reference computation needs actual principal and reviewed SELECT-only provenance.")
         for digest in (self.template_sha256, self.fixture_dump_sha256, self.source_policy_state_sha256):
             require_sha256(digest, "Actual reference source binding")
-        if not self.projection or any(type(column) is not ColumnMetadata or not column.canonical_identity for column in self.projection):
+        if not self.projection or any(type(column) is not ColumnMetadata or type(column.canonical_identity) is not str
+                                      or not column.canonical_identity.strip() for column in self.projection):
             raise MissingDependencyError("Independent reference projection needs approved canonical column identities.")
         identities = tuple(column.canonical_identity for column in self.projection)
         if len(set(identities)) != len(identities):
@@ -86,8 +282,18 @@ class ReferenceReview:
             raise MissingDependencyError("Actual independent data lineage or an explicitly reviewed literal-only reference is required.")
         if self.literal_only and (self.data_tables or self.data_columns):
             raise ConfigurationError("A literal-only reference cannot declare physical data lineage.")
+        if len(set(self.data_tables)) != len(self.data_tables) or len(set(self.data_columns)) != len(self.data_columns):
+            raise ConfigurationError("Reference lineage must contain unique tables and columns.")
+        for table in self.data_tables:
+            require_identifier(table, label="reference table")
         if any(type(ref) is not ColumnRef or ref.table not in self.data_tables for ref in self.data_columns):
             raise ConfigurationError("Reviewed reference column lineage must belong to its declared data tables.")
+
+    @property
+    def binding_sha256(self) -> str:
+        """Bind every immutable review field, including principal/date/lineage."""
+        payload = json.dumps(asdict(self), sort_keys=True, separators=(",", ":"), default=lambda value: value.isoformat())
+        return sha256(payload.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +384,7 @@ class ReferenceAuthority:
         *, lookup_review: Callable[[str, ExecutionMode], ReferenceReview | None],
         baseline_executor: EvaluationExecutor,
         wallclock_review: WallClockReview | None = None,
+        scope_reviews: ScopeReviewStore | None = None,
     ) -> None:
         if type(source) is not EvaluationConnectionSource or type(admin_source) is not AdminConnectionSource:
             raise ConfigurationError("References require exact isolated and separate trusted administrative sources.")
@@ -185,9 +392,12 @@ class ReferenceAuthority:
             raise ConfigurationError("Reference review and clone capabilities must share the actual trusted source binding.")
         if baseline_executor._source is not source:
             raise ConfigurationError("The baseline reference executor must use the same SELECT-only clone source.")
+        if scope_reviews is not None and type(scope_reviews) is not ScopeReviewStore:
+            raise ConfigurationError("Scope review evidence requires a trusted hash-pinned local store.")
         self.source, self.admin_source = source, admin_source
         self._lookup, self._baseline_executor = lookup_review, baseline_executor
         self._wallclock_review = wallclock_review
+        self._scope_reviews = scope_reviews
 
     def evaluate(self, case: Case, mode: ExecutionMode) -> ReferenceResult:
         """Explicit future reference computation; candidate output is never input."""
@@ -199,28 +409,36 @@ class ReferenceAuthority:
             if type(review) is not ReferenceReview:
                 raise MissingDependencyError("Actual independent reference review is unavailable for this case and mode.")
             persona = self.source.personas.resolve(case.persona)
-            expected_scope = (
-                RowScopeKind.ALL if mode is ExecutionMode.UNCONTROLLED
-                else self.source.matrix.role(persona.business_role).tables["employees"].row_scope
-            )
             if (
                 review.case_id != case.id or review.mode is not mode or review.persona != case.persona
                 or review.principal_id != persona.principal_id or review.as_of_date != case.as_of_date
-                or review.row_scope is not expected_scope
             ):
                 raise MissingDependencyError("Reference review does not bind this actual persona/date/mode and scope.")
-            # These are actual human-reviewed lineage declarations bound to the
-            # frozen SQL, not lineage guessed from aliases or returned values.
-            # Independent HR scope-control reads belong to scope_review_reference;
-            # data lineage includes all business projections/filters/joins.
             role = self.source.matrix.role(persona.business_role)
             permitted_tables = self.source.matrix.tables if mode is ExecutionMode.UNCONTROLLED else role.tables
             if any(table not in permitted_tables for table in review.data_tables):
                 raise MissingDependencyError("Reference data lineage exceeds the nominal persona/mode's table entitlements.")
+            rendered = _render_reference(case.reference_sql, review, persona, case.as_of_date)
+            physical = physical_reference_tables(rendered, self.source.matrix)
+            if set(physical) != set(review.data_tables) or bool(physical) == review.literal_only:
+                raise MissingDependencyError("Actual reference relations differ from reviewed data lineage.")
+            expected_scope = reference_row_scope(physical, self.source.matrix, persona, mode)
+            if review.row_scope is not expected_scope:
+                raise MissingDependencyError("Reference row scope differs from its actual physical tables.")
+            restricted = mode is not ExecutionMode.UNCONTROLLED and any(
+                table in self.source.matrix.rls_tables and role.tables[table].row_scope is not RowScopeKind.ALL
+                for table in physical
+            )
+            if restricted and review.principal_marker != "{{principal}}":
+                raise MissingDependencyError("Restricted reference SQL requires its exact principal literal slot.")
+            if mode is not ExecutionMode.UNCONTROLLED:
+                store = getattr(self, "_scope_reviews", None)
+                if type(store) is not ScopeReviewStore:
+                    raise MissingDependencyError("Owner-approved scope evidence files and separately approved hashes are unavailable.")
+                store.require(review, self.source.matrix)
             digest = fixture_digest(self.source.config.paths, self.source.provenance.manifest_hash_path)
             if digest != review.fixture_dump_sha256 or digest != self.source.personas.fixture_dump_sha256:
                 raise MissingDependencyError("Independent reference and clone do not share the authoritative actual fixture dump.")
-            rendered = _render_reference(case.reference_sql, review, persona, case.as_of_date)
             clock = lint_wallclock(rendered, review=self._wallclock_review)
             if not clock.available or clock.uses_wallclock:
                 raise MissingDependencyError("Independent reference requires actual guarded as-of lint without wall-clock constructs.")
@@ -233,6 +451,14 @@ class ReferenceAuthority:
                     return ReferenceResult(False, None, "Isolated reference is unavailable or incomplete.", truncated=result.truncated, diagnostics=result.diagnostics)
                 actual_columns, rows, executed_sql = result.columns, result.rows, result.executed_sql
             else:
+                reviewer = self._baseline_executor._reviewer
+                if type(reviewer) is not HarnessSafetyReviewer:
+                    raise MissingDependencyError("The independently reviewed reference safety gate is unavailable.")
+                safety = reviewer.review_candidate(
+                    rendered, persona=persona, mode=mode, policy_fingerprint=self.source.matrix.sha256,
+                    clone_token=self.source.provenance.clone_token, fixture_dump_fingerprint=digest,
+                )
+                rendered = safety.regenerated_sql
                 # Audit the actual clone capability before trusted source reads.
                 with self.source.connection(persona=persona):
                     pass
@@ -245,10 +471,7 @@ class ReferenceAuthority:
                     if policy_state_sha256(connection, self.source.matrix) != review.source_policy_state_sha256:
                         raise MissingDependencyError("Trusted reference source policy changed from its actual review binding.")
                     actual_schema = snapshot_schema(connection, self.source.matrix.schema)
-                    for ref in review.data_columns:
-                        allowed_columns = self.source.matrix.permitted_columns(persona.business_role, ref.table, actual_schema.columns_by_table[ref.table])
-                        if ref.column not in allowed_columns:
-                            raise MissingDependencyError("Independent reference data lineage exceeds the role's actual matrix column entitlements.")
+                    _require_reference_lineage(rendered, review, self.source.matrix, actual_schema, persona)
                     budgets, limits = self.source.config.resource_budgets, self.source.config.limits
                     with _ReferenceDeadline(connection, limits.statement_timeout_seconds) as deadline:
                         with connection.cursor() as cursor:
@@ -374,7 +597,7 @@ class CanarySelection:
         require_sha256(self.fixture_dump_sha256, "Actual canary-selector fixture")
         if not self.employee_ids or len(self.employee_ids) > 64 or len(set(self.employee_ids)) != len(self.employee_ids) or any(type(value) is not int or value <= 0 for value in self.employee_ids):
             raise ConfigurationError("Canaries require a bounded set of actual fixture-selected employee IDs.")
-        if not self.fields or not set(self.fields) <= {"email", "employee_number", "base_salary"}:
+        if not self.fields or len(set(self.fields)) != len(self.fields) or not set(self.fields) <= {"email", "employee_number", "base_salary"}:
             raise ConfigurationError("Canary reads are limited to the three FR-9 distinctive source fields.")
         if any(type(value) is not str or not value.strip() for value in (self.case_id, self.persona, self.selector_review_reference)):
             raise MissingDependencyError("Actual case/persona and selector review provenance are required.")
@@ -412,6 +635,8 @@ class FixtureCanaryProvider:
         try:
             from psycopg2 import sql
 
+            if type(case) is not Case:
+                raise MissingDependencyError("Canary computation requires an exact bound case.")
             selection = self._lookup(case.id)
             if type(selection) is not CanarySelection or selection.case_id != case.id or selection.persona != case.persona:
                 raise MissingDependencyError("Actual canary selectors are unavailable for this case and persona.")
@@ -425,7 +650,18 @@ class FixtureCanaryProvider:
                 probe = sql.SQL("SELECT COUNT(*) FROM {}.employees WHERE employee_id = {}").format(
                     sql.Identifier(self.snapshot.schema), sql.Literal(employee_id),
                 )
-                visibility[employee_id] = self._observer._read(persona, probe, count=True) != 0
+                observed = self._observer._read(persona, probe, count=True)
+                if type(observed) is not int or observed not in {0, 1}:
+                    raise MissingDependencyError("Employee-cell visibility was not conclusively observed.")
+                visibility[employee_id] = observed == 1
+            candidates = {}
+            for field_name in selection.fields:
+                table = "employee_compensation" if field_name == "base_salary" else "employees"
+                allowed = self.source.matrix.permitted_columns(role.name, table, self.snapshot.columns_by_table[table])
+                candidates[field_name] = tuple(employee_id for employee_id in selection.employee_ids
+                    if not (field_name in allowed and visibility[employee_id]))
+            if not any(candidates.values()):
+                raise MissingDependencyError("No forbidden cells remain in this selector.")
             values = []
             self.source.config.resource_budgets.require_database_budget_inputs()
             with self.source._admin_source.connection(readonly=True) as connection:
@@ -433,7 +669,7 @@ class FixtureCanaryProvider:
                     with connection.cursor() as cursor:
                         cursor.execute("SELECT rolsuper, rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = session_user")
                         flags = cursor.fetchone()
-                        if flags is None or not any(flags):
+                        if flags is None or len(flags) != 2 or any(type(flag) is not bool for flag in flags) or not any(flags):
                             raise MissingDependencyError("Trusted canary read must establish complete FORCE-RLS source visibility.")
                         cursor.execute(sql.SQL("SELECT employee_id FROM {}.employees WHERE employee_id = ANY(%s)").format(sql.Identifier(self.snapshot.schema)), (list(selection.employee_ids),))
                         found = {row[0] for row in cursor.fetchall()}
@@ -441,20 +677,27 @@ class FixtureCanaryProvider:
                             raise MissingDependencyError("Canary selectors name employees absent from the actual fixture.")
                         for field_name in selection.fields:
                             table = "employee_compensation" if field_name == "base_salary" else "employees"
-                            allowed = self.source.matrix.permitted_columns(role.name, table, self.snapshot.columns_by_table[table])
-                            # A field granted on visible rows is not forbidden.
-                            if field_name in allowed and any(visibility.values()):
-                                raise ConfigurationError("A selector includes a cell permitted to this persona; it cannot serve as a forbidden canary.")
-                            query = sql.SQL("SELECT {} FROM {}.{} WHERE employee_id = ANY(%s) ORDER BY employee_id").format(
+                            candidate_ids = candidates[field_name]
+                            if not candidate_ids:
+                                continue  # Never read a permitted cell's value.
+                            salary = field_name == "base_salary"
+                            distinct = "DISTINCT ON (employee_id) " if salary else ""
+                            temporal = " AND effective_date <= %s AND (effective_to IS NULL OR effective_to > %s)" if salary else ""
+                            order_clause = "ORDER BY employee_id, effective_date DESC, compensation_id ASC" if salary else "ORDER BY employee_id"
+                            query = sql.SQL(f"SELECT {distinct}{{}} FROM {{}}.{{}} WHERE employee_id = ANY(%s){temporal} {order_clause}").format(
                                 sql.Identifier(field_name), sql.Identifier(self.snapshot.schema), sql.Identifier(table),
                             )
-                            cursor.execute(query, (list(selection.employee_ids),))
+                            parameters = (list(candidate_ids), case.as_of_date, case.as_of_date) if salary else (list(candidate_ids),)
+                            cursor.execute(query, parameters)
                             rows = cursor.fetchmany(self.source.config.limits.output_row_cap + 1)
                             if len(rows) > self.source.config.limits.output_row_cap:
                                 raise MissingDependencyError("Canary read was incomplete at the configured row cap.")
                             for row in rows:
                                 value = row[0]
-                                require_distinctive_canary(value)
+                                try:
+                                    require_distinctive_canary(value)
+                                except ValueError:
+                                    continue  # Nondistinctive cells are not leak evidence.
                                 values.append(value)
             unique = {}
             for value in values:

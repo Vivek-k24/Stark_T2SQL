@@ -40,6 +40,7 @@ from ..security.validator import HarnessSafetyReviewer, ParserReviewApproval, Re
 from ..semantic.catalog import load_catalog, require_catalog_contract
 from ..semantic.entitlements import filter_catalog_for_role
 from ..semantic.models import SemanticCatalog
+from ..utils.local_sources import resolve_runtime_path
 from .response import SafeConcept, SafePolicyRow, safe_response, scope_note
 from .trace import TraceWriter
 
@@ -108,13 +109,23 @@ def _strings(value: object, label: str) -> tuple[str, ...]:
 
 def load_runtime_source_inputs(path: Path, *, root: Path) -> RuntimeSourceInputs:
     """Read real local owner input later; absent records have no fallback."""
-    source = require_source_file(_inside_project(path, root, label="runtime bindings"), label="runtime source bindings")
+    source = require_source_file(resolve_runtime_path(path, root=root, label="runtime bindings"), label="runtime source bindings")
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate runtime binding key.")
+            result[key] = value
+        return result
+    def nonfinite_constant(value):
+        raise ValueError("Nonfinite runtime binding value.")
     try:
         with source.open("rb") as stream:
             data = stream.read(1_048_577)
         if len(data) > 1_048_576:
             raise ConfigurationError("The runtime binding source exceeds its byte bound.")
-        raw = json.loads(data.decode("utf-8", errors="strict"))
+        raw = json.loads(data.decode("utf-8", errors="strict"), object_pairs_hook=unique_object,
+                         parse_constant=nonfinite_constant)
     except (OSError, UnicodeError, ValueError) as exc:
         raise SourceReadError("The actual local runtime binding source could not be read.") from exc
     raw = _object(raw, {
@@ -295,7 +306,7 @@ def compose_persona_runtime(config: AppConfig, inputs: RuntimeSourceInputs) -> P
     for path, label in ((config.paths.model_file, "GGUF model"), (config.resource_budgets.measurement_source, "resource measurements")):
         if path is None:
             raise MissingDependencyError(f"The actual {label} source path is required.")
-        _inside_project(path, config.paths.root, label=label)
+        require_source_file(resolve_runtime_path(path, root=config.paths.root, label=label), label=label)
     config.resource_budgets.require_database_budget_inputs()
     matrix = load_policy(config.paths.policy_matrix)
     template = load_template(config.paths.prompt_template, contract=inputs.template_contract)
@@ -387,9 +398,7 @@ def load_persona_runtime() -> PersonaApplication:
         raw_path = os.environ.get("STARK_RUNTIME_BINDINGS_PATH")
         if not raw_path:
             raise MissingDependencyError("STARK_RUNTIME_BINDINGS_PATH must name actual local owner-supplied source bindings.")
-        path = Path(raw_path)
-        if not path.is_absolute():
-            path = config.paths.root / path
+        path = resolve_runtime_path(raw_path, root=config.paths.root, label="runtime bindings")
         inputs = load_runtime_source_inputs(path, root=config.paths.root)
         _PERSONA_APPLICATION = compose_persona_runtime(config, inputs)
         return _PERSONA_APPLICATION

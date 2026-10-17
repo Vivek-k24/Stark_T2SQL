@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from stark_t2sql.contracts import RowScopeKind
 from stark_t2sql.db.catalog import SchemaSnapshot
-from stark_t2sql.policy.loader import PolicyMatrix, require_policy_schema
+from stark_t2sql.policy.loader import PolicyMatrix, authorization_specs
 from stark_t2sql.policy.privileges import qualified_name, quote_identifier
 
 
@@ -27,19 +27,37 @@ class AuthorizationProbe:
     observes_rows: bool = False
 
 
-def build_probes(matrix: PolicyMatrix, snapshot: SchemaSnapshot) -> tuple[AuthorizationProbe,...]:
-    require_policy_schema(matrix,snapshot.columns_by_table)
-    probes=[]
+def build_probes(matrix: PolicyMatrix, snapshot: SchemaSnapshot) -> tuple[AuthorizationProbe, ...]:
+    """Derive expected column access from the policy loader's canonical specs.
+
+    AuthorizationSpec.column=None records table-level SELECT privilege, which
+    is different from whether SELECT * is possible through column-level grants.
+    Accordingly, the star probe succeeds only if ALL column specs permit SELECT.
+    Keep the original role/table/column/star probe IDs and ordering stable.
+    """
+    expectations = {
+        (spec.business_role, spec.table, spec.column): spec
+        for spec in authorization_specs(matrix, snapshot.columns_by_table)
+    }
+    probes = []
     for role in matrix.roles:
         for table in sorted(matrix.tables):
-            access=role.tables.get(table)
-            columns=snapshot.columns_by_table[table]
-            permitted=() if access is None else matrix.permitted_columns(role.name,table,columns)
-            scope=None if access is None else access.row_scope
-            for column in columns:
-                probes.append(AuthorizationProbe(f"authorization.{role.name}.{table}.{column}",role.name,table,column,
-                    column in permitted,f"SELECT {quote_identifier(column)} FROM {qualified_name(matrix.schema,table)} LIMIT 0;",scope))
-            probes.append(AuthorizationProbe(f"authorization.{role.name}.{table}.star",role.name,table,None,
-                access is not None and set(columns)<=set(permitted),
-                f"SELECT * FROM {qualified_name(matrix.schema,table)} LIMIT 0;",scope))
+            columns = snapshot.columns_by_table[table]
+            table_spec = expectations[(role.name, table, None)]
+            column_specs = [expectations[(role.name, table, column)] for column in columns]
+            scope = table_spec.row_scope
+            for spec in column_specs:
+                probes.append(AuthorizationProbe(
+                    f"authorization.{role.name}.{table}.{spec.column}",
+                    role.name, table, spec.column, spec.expected_select,
+                    f"SELECT {quote_identifier(spec.column)} FROM {qualified_name(matrix.schema, table)} LIMIT 0;",
+                    spec.row_scope,
+                ))
+            probes.append(AuthorizationProbe(
+                f"authorization.{role.name}.{table}.star",
+                role.name, table, None,
+                all(spec.expected_select for spec in column_specs),
+                f"SELECT * FROM {qualified_name(matrix.schema, table)} LIMIT 0;",
+                scope,
+            ))
     return tuple(probes)

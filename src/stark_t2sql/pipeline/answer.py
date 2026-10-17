@@ -166,14 +166,14 @@ def _perform(
     work.stage = StoppingLayer.CONTEXT
     context_started = monotonic()
     try:
-        # Resolve vocabulary independently of the prompt version. v1 receives
-        # no semantic text, and no meanings or reference answers are invented.
-        resolution = resolve_question(
-            request.question, runtime.catalog, runtime.matrix, runtime.snapshot, request.persona.business_role,
-        )
-        if resolution.status is ResolutionStatus.CLARIFICATION_REQUIRED:
-            work.clarification = resolution.clarification
-            return OutcomeStatus.CLARIFICATION_REQUIRED, StoppingLayer.CONTEXT, ReasonCode.CLARIFICATION_REQUIRED
+        # Resolve vocabulary for v2 semantic modes; v1 UNCONTROLLED baseline has no semantic layer.
+        if version != 1 and runtime.catalog is not None:
+            resolution = resolve_question(
+                request.question, runtime.catalog, runtime.matrix, runtime.snapshot, request.persona.business_role,
+            )
+            if resolution.status is ResolutionStatus.CLARIFICATION_REQUIRED:
+                work.clarification = resolution.clarification
+                return OutcomeStatus.CLARIFICATION_REQUIRED, StoppingLayer.CONTEXT, ReasonCode.CLARIFICATION_REQUIRED
         if invocation is None:
             compiled = build_context(request, runtime.snapshot, runtime.catalog, runtime.matrix)
         else:
@@ -288,10 +288,24 @@ def _perform(
     _require_not_cancelled(cancel, StoppingLayer.DATABASE if result.executed_sql is not None else work.stage)
     # Cap+one, SQLSTATE mapping and transaction cancellation are inherited from
     # the sole existing execution boundary, not duplicated in this module.
-    work.scope = (
-        RowScopeKind.ALL if request.mode is ExecutionMode.UNCONTROLLED
-        else runtime.matrix.role(request.persona.business_role).tables["employees"].row_scope
-    )
+    if request.mode is ExecutionMode.UNCONTROLLED:
+        work.scope = RowScopeKind.ALL
+    else:
+        role_policy = runtime.matrix.role(request.persona.business_role)
+        sql_for_scope = (result.executed_sql or work.regenerated_sql or work.extracted_sql or "").lower()
+        import re as _re
+        referenced = {
+            tbl for tbl in role_policy.tables
+            if _re.search(r"(?<!\w)" + _re.escape(tbl.lower()) + r"(?!\w)", sql_for_scope)
+        }
+        if "leave_balances" in referenced and "leave_balances" in role_policy.tables:
+            work.scope = role_policy.tables["leave_balances"].row_scope
+        elif "employees" in referenced and "employees" in role_policy.tables:
+            work.scope = role_policy.tables["employees"].row_scope
+        elif referenced:
+            work.scope = RowScopeKind.ALL
+        else:
+            work.scope = role_policy.tables["employees"].row_scope
     return result.status, result.stopping_layer, result.reason_code
 
 

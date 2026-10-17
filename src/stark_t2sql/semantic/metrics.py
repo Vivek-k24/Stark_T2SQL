@@ -21,15 +21,31 @@ from .models import SemanticCatalog
 
 
 _PARAMETER = re.compile(r"(?<!:):([a-zA-Z_][a-zA-Z_0-9]*)(?![a-zA-Z_0-9])")
+_CAST_AS_OF_PARAMETER = re.compile(r"CAST\s*\(\s*:as_of_date\s+AS\s+DATE\s*\)", re.IGNORECASE)
 _AS_OF_PARAMETER = re.compile(r"(?<!:):as_of_date(?![a-zA-Z_0-9])")
+# A missing argument must raise the same typed request error as None/datetime.
+# This sentinel supplies no date and cannot be used as a runtime default.
+_MISSING_DATE = object()
+
+
+def _require_date(as_of_date: date) -> date:
+    if type(as_of_date) is not date:
+        raise InvalidRequestError("Canonical semantics require an explicit date, without a timestamp.")
+    return as_of_date
 
 
 def _bind_date(fragment: str, as_of_date: date) -> str:
+    _require_date(as_of_date)
     parameters = set(_PARAMETER.findall(fragment))
     if parameters - {"as_of_date"}:
         raise ConfigurationError("A governed fragment has an unsupported runtime parameter.")
     # The value originates only from a typed date, never user SQL or text.
-    return _AS_OF_PARAMETER.sub("DATE '" + as_of_date.isoformat() + "'", fragment)
+    date_literal = "DATE '" + as_of_date.isoformat() + "'"
+    bound = _CAST_AS_OF_PARAMETER.sub(date_literal, fragment)
+    bound = _AS_OF_PARAMETER.sub(date_literal, bound)
+    if ":as_of_date" in bound.casefold():
+        raise ConfigurationError("A governed date parameter could not be completely bound.")
+    return bound
 
 
 def compile_metric(
@@ -38,7 +54,7 @@ def compile_metric(
     matrix: PolicyMatrix,
     snapshot: SchemaSnapshot,
     business_role: str,
-    as_of_date: date,
+    as_of_date: date = _MISSING_DATE,
 ) -> MetricContract:
     """Return the role-eligible canonical meaning at an explicit business date.
 
@@ -51,8 +67,7 @@ def compile_metric(
     may silently replace those rules with visible-row count, SUM/AVG percentage,
     pay_period_end or a current-time predicate.
     """
-    if type(as_of_date) is not date:
-        raise InvalidRequestError("Canonical semantics require an explicit date, without a timestamp.")
+    _require_date(as_of_date)
     if not isinstance(metric_id, str) or metric_id not in catalog.metrics:
         raise ConfigurationError("The requested governed metric is not defined.")
     if not metric_is_allowed(catalog, matrix, snapshot, business_role, metric_id):

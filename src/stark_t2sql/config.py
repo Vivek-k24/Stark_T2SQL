@@ -20,6 +20,7 @@ from .utils.local_only import (
     require_allowed_host_port,
     require_allowed_url,
 )
+from .utils.local_sources import resolve_runtime_path
 
 
 FIXTURE_AS_OF_DATE = date(2026, 10, 12)
@@ -286,26 +287,24 @@ def load_config(
     frd_setting = values.get("STARK_FRD_PATH")
     frd_path = Path(frd_setting) if frd_setting else None
     model_setting = values.get("STARK_GGUF_PATH")
-    model_path = Path(model_setting) if model_setting else None
-    if model_path is not None and not model_path.is_absolute():
-        model_path = project_root / model_path
+    model_path = resolve_runtime_path(model_setting, root=project_root, label="GGUF model") if model_setting else None
     measurement_setting = values.get("STARK_RESOURCE_MEASUREMENTS_PATH")
-    measurement_path = Path(measurement_setting) if measurement_setting else None
-    if measurement_path is not None and not measurement_path.is_absolute():
-        measurement_path = project_root / measurement_path
+    measurement_path = resolve_runtime_path(measurement_setting, root=project_root, label="resource measurements") if measurement_setting else None
 
     # These ports are initial configuration assumptions, not discovered services.
-    model_port = _integer_setting(values, "STARK_LLAMACPP_PORT", default=8080)
+    model_port = _integer_setting(values, "STARK_LLAMACPP_PORT", default=8081)
     database_port = _integer_setting(values, "STARK_PG_PORT", default=5432)
     if model_port is None or database_port is None:
         raise ConfigurationError("Runtime endpoint ports must be supplied.")
     model_endpoint = LoopbackEndpoint("http", values.get("STARK_LLAMACPP_HOST", "127.0.0.1"), model_port)
+    alt_port = 8080 if model_port == 8081 else 8081
+    alt_model_endpoint = LoopbackEndpoint("http", model_endpoint.host, alt_port)
     database_endpoint = LoopbackEndpoint(
         "postgresql", values.get("STARK_PG_HOST", "127.0.0.1"), database_port
     )
     model_host = f"[{model_endpoint.host}]" if ":" in model_endpoint.host else model_endpoint.host
     model_url = f"http://{model_host}:{model_endpoint.port}"
-    endpoints = (model_endpoint, database_endpoint)
+    endpoints = (model_endpoint, alt_model_endpoint, database_endpoint)
 
     row_cap = _integer_setting(values, "STARK_OUTPUT_ROW_CAP", default=1000)
     if row_cap is None:

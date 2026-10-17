@@ -26,7 +26,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 
-FUNCTION_POLICY_REVISION = "fr5-function-draft-2"
+FUNCTION_POLICY_REVISION = "fr5-function-r05-1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +47,7 @@ class FunctionRule:
 # two possible DATE_TRUNC layouts. A profile admits only observed layouts.
 PROPOSED_RULES: tuple[FunctionRule, ...] = (
     FunctionRule("count-known-v1", "count", "Count", frozenset({"this", "expressions", "big_int"}), 1, 1,
-        "COUNT(*) / COUNT(value) / COUNT(DISTINCT values): ordinary read-only aggregate; no approximate/big-int dialect flags."),
+        "COUNT(*) / COUNT(value) / COUNT(DISTINCT values): ordinary read-only aggregate; exact Count big_int boolean is PostgreSQL parser metadata, not a SQL argument."),
     FunctionRule("sum-known-v1", "sum", "Sum", frozenset({"this"}), 1, 1,
         "SUM(built-in numeric value), nullable read-only aggregate; database resolves numeric types."),
     FunctionRule("avg-known-v1", "avg", "Avg", frozenset({"this"}), 1, 1,
@@ -183,6 +183,12 @@ class ReviewedFunctionPolicy:
         unknown = {key for key, value in args.items() if _present(value)} - rule.argument_keys
         if unknown:
             raise FunctionPolicyViolation("Unreviewed function arguments/flags are present.")
+        if "big_int" in args and not (
+            rule.parser_class == "Count" and rule.sql_name == "count" and type(args["big_int"]) is bool
+        ):
+            raise FunctionPolicyViolation("Only an exact COUNT boolean metadata flag is reviewed.")
+        if "expressions" in args and args["expressions"] is not None and not isinstance(args["expressions"], list):
+            raise FunctionPolicyViolation("Function arguments use an unreviewed representation.")
         if rule.parser_class == "Anonymous":
             if not isinstance(args.get("this"), str) or args["this"].lower() != rule.sql_name:
                 raise FunctionPolicyViolation("Anonymous name does not match its reviewed built-in signature.")
@@ -214,8 +220,6 @@ class ReviewedFunctionPolicy:
             # PercentileCont's optional expression is not the WITHIN GROUP
             # ordering representation admitted here. It must remain absent.
             raise FunctionPolicyViolation("An additional function expression is unreviewed.")
-        if _present(args.get("big_int")):
-            raise FunctionPolicyViolation("A dialect-specific aggregate flag is unreviewed.")
         return tuple(values)
 
     def _literal_number(self, node: object) -> Decimal | None:
@@ -271,6 +275,8 @@ class ReviewedFunctionPolicy:
         arguments = self._arguments(node, rule)
         if not rule.min_arity <= len(arguments) <= rule.max_arity or any(value is None for value in arguments):
             raise FunctionPolicyViolation("Function arity does not match its reviewed signature.")
+        if any(not isinstance(value, self.exp.Expression) for value in arguments):
+            raise FunctionPolicyViolation("Function values must use actual expression nodes.")
         parent = getattr(node, "parent", None)
         if self._is(parent, "Dot"):
             raise FunctionPolicyViolation("Qualified executable calls are excluded from this profile.")
@@ -279,8 +285,10 @@ class ReviewedFunctionPolicy:
         if rule.sql_name == "count":
             value = arguments[0]
             if self._is(value, "Distinct"):
-                distinct_values = value.args.get("expressions") or []
-                if not distinct_values or any(self._is(item, "Star") for item in distinct_values):
+                distinct_values = value.args.get("expressions")
+                if not isinstance(distinct_values, list) or not distinct_values or any(
+                    not isinstance(item, self.exp.Expression) or self._is(item, "Star") for item in distinct_values
+                ):
                     raise FunctionPolicyViolation("COUNT DISTINCT requires concrete values.")
             elif self._is(value, "Star") and any(_present(item) for item in value.args.values()):
                 raise FunctionPolicyViolation("Modified COUNT stars are not admitted.")

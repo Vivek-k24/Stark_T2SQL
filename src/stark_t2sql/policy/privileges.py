@@ -42,10 +42,24 @@ def qualified_name(schema: str, name: str) -> str:
     return f"{quote_identifier(schema)}.{quote_identifier(name)}"
 
 
-def managed_role_names(matrix: PolicyMatrix, definer_owner: str) -> tuple[str, ...]:
-    return tuple(role.name for role in matrix.roles) + tuple(
+def managed_role_names(
+    matrix: PolicyMatrix, definer_owner: str, baseline_eval_login: str | None = None
+) -> tuple[str, ...]:
+    names = tuple(role.name for role in matrix.roles) + tuple(
         role.login_role for role in matrix.roles
     ) + (definer_owner,)
+    if baseline_eval_login is None:
+        return names
+    quote_identifier(baseline_eval_login)
+    if (
+        re.fullmatch(r"[a-z_][a-z0-9_]*", baseline_eval_login) is None
+        or baseline_eval_login.startswith("pg_")
+        or baseline_eval_login in set(names) | {"public", "postgres"}
+    ):
+        raise ConfigurationError("The evaluation baseline requires a distinct dedicated login role.")
+    # Its generated policy identifier must fit PostgreSQL without truncation.
+    quote_identifier(f"stark_select_{baseline_eval_login}")
+    return names + (baseline_eval_login,)
 
 
 def trusted_search_path(schema: str) -> str:
@@ -73,7 +87,7 @@ def _role_array(names: tuple[str, ...]) -> str:
 
 def role_statements(matrix: PolicyMatrix, settings: CompileSettings) -> tuple[str, ...]:
     """Create/normalize only dedicated roles, rejecting privileged role reuse."""
-    names = managed_role_names(matrix, settings.definer_owner)
+    names = managed_role_names(matrix, settings.definer_owner, settings.baseline_eval_login)
     name_array = _role_array(names)
     schema_literal = quote_literal(matrix.schema)
     owner_literal = quote_literal(settings.definer_owner)
@@ -118,6 +132,8 @@ END
 $stark_role_safety$;"""
     )
     login_names = {role.login_role for role in matrix.roles}
+    if settings.baseline_eval_login is not None:
+        login_names.add(settings.baseline_eval_login)
     for name in names:
         attributes = (
             ("LOGIN" if name in login_names else "NOLOGIN")
@@ -169,7 +185,7 @@ $stark_memberships$;"""
 
 
 def schema_statements(matrix: PolicyMatrix, settings: CompileSettings) -> tuple[str, ...]:
-    names = managed_role_names(matrix, settings.definer_owner)
+    names = managed_role_names(matrix, settings.definer_owner, settings.baseline_eval_login)
     role_list = ", ".join(quote_identifier(name) for name in names)
     principals = "PUBLIC, " + role_list
     schema = quote_identifier(matrix.schema)
@@ -228,15 +244,19 @@ def login_default_statements(
         ("work_mem", f"{settings.work_mem_kib}kB"),
         ("temp_file_limit", f"{settings.temp_file_limit_kib}kB"),
     )
-    for role in matrix.roles:
-        login = quote_identifier(role.login_role)
+    login_names = tuple(role.login_role for role in matrix.roles)
+    if settings.baseline_eval_login is not None:
+        managed_role_names(matrix, settings.definer_owner, settings.baseline_eval_login)
+        login_names += (settings.baseline_eval_login,)
+    for login_name in login_names:
+        login = quote_identifier(login_name)
         # Role+database defaults override global role defaults: clear old overrides
         # in this fixture database, then set the same reviewed settings explicitly.
         statements.append(
             f"""DO $stark_reset_database_defaults$
 BEGIN
     EXECUTE pg_catalog.format('ALTER ROLE %I IN DATABASE %I RESET ALL',
-        {quote_literal(role.login_role)}, pg_catalog.current_database());
+        {quote_literal(login_name)}, pg_catalog.current_database());
 END
 $stark_reset_database_defaults$;"""
         )
@@ -248,12 +268,12 @@ $stark_reset_database_defaults$;"""
             suffix = f"SET {key} = {quote_literal(value)}"
             per_database_commands.append(
                 "    EXECUTE pg_catalog.format('ALTER ROLE %I IN DATABASE %I %s', "
-                f"{quote_literal(role.login_role)}, pg_catalog.current_database(), "
+                f"{quote_literal(login_name)}, pg_catalog.current_database(), "
                 f"{quote_literal(suffix)});"
             )
         per_database_commands.append(
             "    EXECUTE pg_catalog.format('ALTER ROLE %I IN DATABASE %I %s', "
-            f"{quote_literal(role.login_role)}, pg_catalog.current_database(), "
+            f"{quote_literal(login_name)}, pg_catalog.current_database(), "
             f"{quote_literal('SET search_path = ' + search_path)});"
         )
         statements.append(
@@ -267,7 +287,7 @@ $stark_reset_database_defaults$;"""
 def set_config_statements(matrix: PolicyMatrix, settings: CompileSettings) -> tuple[str, ...]:
     """These statements belong only to administrative setup AFTER dump restore."""
     managed = ", ".join(
-        quote_identifier(name) for name in managed_role_names(matrix, settings.definer_owner)
+        quote_identifier(name) for name in managed_role_names(matrix, settings.definer_owner, settings.baseline_eval_login)
     )
     logins = ", ".join(quote_identifier(role.login_role) for role in matrix.roles)
     signature = "pg_catalog.set_config(text, text, boolean)"

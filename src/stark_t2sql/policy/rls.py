@@ -23,12 +23,14 @@ def principal_expression() -> str:
     return "NULLIF(pg_catalog.current_setting('app.principal_id', true), '')::int"
 
 
-def scope_function_statements(matrix: PolicyMatrix, *, definer_owner: str) -> tuple[str, ...]:
+def scope_function_statements(
+    matrix: PolicyMatrix, *, definer_owner: str, baseline_eval_login: str | None = None
+) -> tuple[str, ...]:
     function = qualified_name(matrix.schema, "hr_bp_current_divisions") + "()"
     assignments = qualified_name(matrix.schema, "hr_bp_assignments")
     owner = quote_identifier(definer_owner)
     principals = "PUBLIC, " + ", ".join(
-        quote_identifier(name) for name in managed_role_names(matrix, definer_owner)
+        quote_identifier(name) for name in managed_role_names(matrix, definer_owner, baseline_eval_login)
     )
     return (
         f"""CREATE OR REPLACE FUNCTION {function}
@@ -72,7 +74,7 @@ def _using_expression(matrix: PolicyMatrix, table: str, scope: RowScopeKind) -> 
     raise ConfigurationError(f"Unsupported RLS row scope for table {table}.")
 
 
-def rls_statements(matrix: PolicyMatrix) -> tuple[str, ...]:
+def rls_statements(matrix: PolicyMatrix, *, baseline_eval_login: str | None = None) -> tuple[str, ...]:
     tables = ", ".join(quote_literal(table) for table in matrix.rls_tables)
     statements = [
         # A stale permissive policy can widen scope even after ACLs are repaired.
@@ -106,5 +108,11 @@ $stark_remove_policies$;""",
             statements.append(
                 f"CREATE POLICY {policy_name} ON {target} AS PERMISSIVE "
                 f"FOR SELECT TO {quote_identifier(role.name)} USING ({using});"
+            )
+        if baseline_eval_login is not None:
+            eval_policy = quote_identifier(f"stark_select_{baseline_eval_login}")
+            statements.append(
+                f"CREATE POLICY {eval_policy} ON {target} AS PERMISSIVE "
+                f"FOR SELECT TO {quote_identifier(baseline_eval_login)} USING (true);"
             )
     return tuple(statements)

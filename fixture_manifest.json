@@ -1,0 +1,188 @@
+{
+  "fixture_date": "2026-10-12",
+  "fixture_dump_sha256": "859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4",
+  "fixture_seed": 42,
+  "fixture_version": "spb_2026_10_12",
+  "invariants": [
+    {
+      "description": "Exactly twelve reviewed table/column contracts",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-01",
+      "satisfied": true
+    },
+    {
+      "description": "Reviewed lookup identities and 10/37 cardinalities",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-02",
+      "satisfied": true
+    },
+    {
+      "description": "500 distinct synthetic employee identities",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-03",
+      "satisfied": true
+    },
+    {
+      "description": "All surrogate identities and physical foreign keys",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-04",
+      "satisfied": true
+    },
+    {
+      "description": "435 canonical active employees at explicit fixture date",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-05",
+      "satisfied": true
+    },
+    {
+      "description": "Acyclic managers and derivable active Sales manager",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-06",
+      "satisfied": true
+    },
+    {
+      "description": "Annual USD compensation with nonoverlapping effective ranges",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-07",
+      "satisfied": true
+    },
+    {
+      "description": "Explicit regular biweekly periods and USD-only payroll",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-08",
+      "satisfied": true
+    },
+    {
+      "description": "FRD payroll creator and explicit approval identity/date pairs",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-09",
+      "satisfied": true
+    },
+    {
+      "description": "Unique run/employee result grain and exact-cent net arithmetic",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-10",
+      "satisfied": true
+    },
+    {
+      "description": "Earning lines reconcile exactly to each result gross",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-11",
+      "satisfied": true
+    },
+    {
+      "description": "Deduction lines include exact recorded tax and reconcile",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-12",
+      "satisfied": true
+    },
+    {
+      "description": "Exactly three configured negative nets in PR-2026-006",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-13",
+      "satisfied": true
+    },
+    {
+      "description": "Exactly four configured zero-tax 2026 payees under explicit population definition",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-14",
+      "satisfied": true
+    },
+    {
+      "description": "Only PR-2026-012 has the configured 125.00 header/detail difference",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-15",
+      "satisfied": true
+    },
+    {
+      "description": "PR-2026-024 is approved, off-cycle and four explicit corrections",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-16",
+      "satisfied": true
+    },
+    {
+      "description": "Exactly seven configured departments below five active/current compensated employees",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-17",
+      "satisfied": true
+    },
+    {
+      "description": "Dated leave snapshots and distinct HR scopes with conditional 364 fallback",
+      "detail": "",
+      "invariant_id": "DRAFT-FIXTURE-18",
+      "satisfied": true
+    }
+  ],
+  "planted_facts": {
+    "active_employees": 435,
+    "header_mismatch_column": "total_gross_pay",
+    "header_mismatch_run": "PR-2026-012",
+    "header_mismatch_usd": "125.00",
+    "hr_open_scopes": {
+      "361": [
+        3,
+        4
+      ],
+      "364": [
+        5,
+        6
+      ],
+      "47": [
+        1,
+        2
+      ]
+    },
+    "negative_net_count": 3,
+    "negative_net_run": "PR-2026-006",
+    "off_cycle_correction_count": 4,
+    "off_cycle_run": "PR-2026-024",
+    "off_cycle_status": "approved",
+    "small_department_ids": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "zero_tax_2026_payees": [
+      10,
+      20,
+      30,
+      40
+    ]
+  },
+  "provenance": {
+    "baseline": "new R02 synthetic baseline authorized from Antigravity R02 design review",
+    "configuration_sha256": "9b3bfdc67e245d79e9dde9d28afdd2af0ad820c87a4f1b26a7ab982130baa312",
+    "faker_locale": "en_US",
+    "faker_version": "40.43.0",
+    "generator_sha256": "ee9fd0a9965b51f6289290caa211460a65f9b2c38728bf99bb1133265d0561bf",
+    "python_version": "3.12.10",
+    "random_seed": 42,
+    "schema_sha256": "f1b5976a08ebeeeb085d7095ddf25edfb06a261b2ebfe9f0653cb3a8b5128bf3"
+  },
+  "row_counts": {
+    "departments": 37,
+    "divisions": 10,
+    "employee_compensation": 950,
+    "employees": 500,
+    "hr_bp_assignments": 6,
+    "leave_balances": 2610,
+    "locations": 7,
+    "payroll_deductions": 18368,
+    "payroll_earnings": 18364,
+    "payroll_results": 9184,
+    "payroll_runs": 21,
+    "positions": 20
+  },
+  "sha256": "859aa6badb797159f846d0870e377e3aade04049adc4174d2cd7dd6a98dd4fc4",
+  "verification": {
+    "historical_dataset_fidelity_verified": false,
+    "historical_schema_fidelity_verified": false,
+    "live_postgresql_verified": false,
+    "original_historical_invariant_list_recovered": false,
+    "scope": "offline_generated_rows"
+  }
+}

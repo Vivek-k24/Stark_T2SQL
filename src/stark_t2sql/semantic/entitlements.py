@@ -177,8 +177,9 @@ def filter_catalog_for_role(
 
     Aliases live on their parent definitions and disappear with a hidden parent.
     Ambiguity entries retain only visible targets and are emitted only if two
-    meanings remain visible. The resolver must use the ORIGINAL catalog when
-    deciding whether an input is ambiguous: pruning is never disambiguation.
+    meanings remain visible. The resolver matches longest phrases in the original
+    vocabulary, then tests ambiguity over role-visible meanings only. A hidden
+    explicit phrase must never be reinterpreted as a shorter visible concept.
     sha256 retains source-catalog provenance; the context builder independently
     hashes the deterministic emitted semantic text.
     """
