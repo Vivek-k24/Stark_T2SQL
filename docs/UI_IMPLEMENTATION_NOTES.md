@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-This document details the production-ready Streamlit frontend architecture for the STARK T2SQL governed Text-to-SQL system. In accordance with FRD 1.8 section FR-10.4, the static visual prototype (`STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`) has been completely rebuilt as native, safe Streamlit components without embedding or executing legacy HTML/JavaScript iframes.
+This document details the offline-verified Streamlit frontend architecture (mock backend; live connected acceptance not yet performed) for the STARK T2SQL governed Text-to-SQL system. In accordance with FRD 1.8 section FR-10.4, the static visual prototype (`STARK_STATIC_UI_PROTOTYPE_E0_EXPANDED.html`) has been completely rebuilt as native, safe Streamlit components without embedding or executing legacy HTML/JavaScript iframes.
 
 The frontend operates under strict security boundaries:
 1. **FULL Mode Only**: Normal user and persona workflows expose only the governed `FULL` pipeline. Evaluation bypass modes (`NO_VALIDATOR`, `NO_PROMPT_FILTER`, `UNCONTROLLED`) are strictly barred from the UI session state, URL query parameters, and widget trees.
@@ -73,10 +73,12 @@ The application models four canonical business personas:
 
 | Persona Display Name | Business Role | Principal ID | Login Role | Authorized Scope |
 | :--- | :--- | :--- | :--- | :--- |
-| **Payroll specialist** | `app_payroll` | `326` | `app_payroll_login` | Full access to employee, compensation, payroll, and leave records. `hr_bp_assignments` restricted. |
-| **HR business partner #1** | `app_hr_bp` | `47` | `app_hr_bp_login` | Employee and leave records restricted to assigned divisions via `hr_bp_current_divisions()`. Compensation blocked. |
-| **HR business partner #2** | `app_hr_bp` | `361` | `app_hr_bp_login` | Identical HR role permissions with distinct assigned divisions. |
-| **Sales manager** | `app_sales_mgr` | `7` | `app_sales_mgr_login` | Direct-report employee rows only (`manager_id = principal_id`). Limited to 5 columns (`EMP_SALES`). Compensation and leave denied. |
+| **Payroll specialist** | `app_payroll` | `326` | `stark_payroll_login` | Full access to employee, compensation, payroll, and leave records. `hr_bp_assignments` restricted. |
+| **HR business partner #1** | `app_hr_bp` | `47`* | `stark_hr_login` | Employee and leave records restricted to assigned divisions via `hr_bp_current_divisions()`. Compensation blocked. |
+| **HR business partner #2** | `app_hr_bp` | `361`* | `stark_hr_login` | Identical HR role permissions with distinct assigned divisions. |
+| **Sales manager** | `app_sales_mgr` | fixture-derived (mock: `7`) | `stark_sales_login` | Direct-report employee rows only (`manager_id = principal_id`). Limited to 5 columns. Compensation and leave denied. |
+
+Login role names follow `policy/access_matrix.yaml`. \*The live runtime resolves the HR principals at startup (`db.persona.resolve_personas`; 364 is the FRD fallback), and it derives the Sales manager from the fixture. The offline mock in `offline_demo.py` currently uses placeholder `app_*_login` names and principal `7`. Those are mock values only and should be aligned with these names.
 
 ### Governance Notice:
 The sidebar and playground prominently feature the disclaimer:
@@ -129,5 +131,5 @@ The `render_safe_response()` component renders individual authorized attributes 
 
 - **Unit & Contract Suite**: 38 tests passing (`tests/test_interim_ui.py`, `tests/test_ui_rerun_contracts.py`, `tests/test_trace_ui_contracts.py`, `tests/test_ui_e0_scenarios.py`).
 - **Component Tests**: 9 tests passing (`tests/test_ui_components.py`).
-- **Browser Automation Suite**: 5 tests passing (`tests/test_ui_browser_automation.py`).
+- **Headless AppTest Journey Suite**: 5 tests passing (`tests/test_ui_browser_automation.py`). This is Streamlit `AppTest` against the mock backend, not a real browser, and it is not live acceptance.
 - **AST Compliance**: Pinned AST tests verify zero usage of `query_params`, `experimental_get_query_params`, or mode selectors.
