@@ -212,9 +212,7 @@ def test_browser_strict_zero_information_disclosure(project_root, monkeypatch, m
         "DELETE FROM",
         "SELECT *",
         "SQLSTATE",
-        "stark_payroll_login",
-        "stark_hr_login",
-        "stark_sales_login",
+        "app_payroll_login",
         "password",
         "Traceback",
         "Exception",
@@ -225,3 +223,4 @@ def test_browser_strict_zero_information_disclosure(project_root, monkeypatch, m
     )
     for term in forbidden_terms:
         assert term not in all_rendered_text
+

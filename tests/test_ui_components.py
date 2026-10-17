@@ -222,3 +222,4 @@ def test_render_safe_response_rejects_non_safe_response(monkeypatch):
 
     render_safe_response({"raw_sql": "SELECT *", "status": "OK"})
     assert REQUEST_UNAVAILABLE in fake_st.errors
+
